@@ -1,0 +1,214 @@
+Here’s a **detailed technical requirements and API design document** for your Redis-backed backtest dashboard project, written for a developer team building a web frontend. This is based on your actual code, data model, and the realities of Redis.
+
+---
+
+# Backtest Dashboard Web API & Frontend: Technical Requirements
+
+## Overview
+
+This project exposes a web-based dashboard for browsing, filtering, and inspecting backtest sessions, bot runs, and their performance, all stored in Redis.  
+The backend will provide a REST API (or GraphQL, if preferred) that exposes all relevant data, with efficient pagination and filtering, suitable for large-scale datasets (100k+ bot runs per session).
+
+---
+
+## 1. Data Model
+
+### 1.1. **Session**
+- **Key:** `bot_registry:session_current:{symbol}:{timeframe}:{startTimestamp}:{endTimestamp}`
+- **Stored as:** `SessionSummary` (see code)
+- **Fields:**  
+  - `symbol`, `timeframe`, `startTimestamp`, `endTimestamp`
+  - `runCount`, `lastConfigHash`, `lastUpdate`
+  - `bestProfit`, `bestConfigHash`, `currentProfit`
+  - `currentStatus`, `avgProfit`, `errorCount`, `completedRuns`, `active`, `notes`
+
+### 1.2. **Bot Run**
+- **Key:** `bot_registry:run:{symbol}:{timeframe}:{startTimestamp}:{endTimestamp}:{configHash}`
+- **Stored as:** `BacktestRunRecord`
+- **Fields:**  
+  - `status` (`completed`, `running`, `failed`)
+  - `botId`, `configHash`, `lastUpdated`
+  - `resultsMetadata` (performance, marketHistory, etc.)
+  - `configuration` (full bot config)
+
+### 1.3. **Trades**
+- **Key:** `bot_registry:trades:{symbol}:{timeframe}:{startTimestamp}:{endTimestamp}:{configHash}`
+- **Stored as:** Array of `Trade` objects
+
+### 1.4. **Indexes (for fast lookup)**
+- **Session Bot Index:**  
+  - **Key:** `session:{sessionId}:bots` (Set of configHashes for all bot runs in a session)
+- **Status Index:**  
+  - **Key:** `session:{sessionId}:bots:status:{status}` (Set of configHashes for a given status)
+- **Profit Index:**  
+  - **Key:** `session:{sessionId}:bots:profit` (Sorted Set: score = profit, value = configHash)
+
+---
+
+## 2. API Requirements
+
+### 2.1. **Sessions**
+
+#### `GET /api/sessions`
+- **Description:** List all sessions.
+- **Returns:** Array of `SessionSummary`
+- **Pagination:** Optional (if you expect thousands of sessions)
+
+#### `GET /api/sessions/:sessionId`
+- **Description:** Get details for a single session.
+- **Returns:** `SessionSummary`
+- **sessionId format:** `{symbol}:{timeframe}:{startTimestamp}:{endTimestamp}`
+
+---
+
+### 2.2. **Bots in a Session**
+
+#### `GET /api/sessions/:sessionId/bots`
+- **Description:** List bot runs for a session.
+- **Query params:**
+  - `status` (optional): filter by status (`completed`, `running`, etc.)
+  - `minProfit`, `maxProfit` (optional): filter by profit range
+  - `cursor` (optional): for pagination (Redis SSCAN/ZSCAN cursor)
+  - `limit` (optional): page size (default 50)
+- **Returns:**  
+  - `bots`: Array of `{ configHash, status, profit, ... }` (summary, not full record)
+  - `nextCursor`: for pagination
+
+#### `GET /api/sessions/:sessionId/bots/:configHash`
+- **Description:** Get full details for a specific bot run.
+- **Returns:** `BacktestRunRecord`
+
+---
+
+### 2.3. **Trades**
+
+#### `GET /api/sessions/:sessionId/bots/:configHash/trades`
+- **Description:** Get all trades for a bot run.
+- **Returns:** Array of `Trade`
+- **Pagination:** Optional (if trade count is huge)
+
+---
+
+### 2.4. **Bot Configuration**
+
+#### `GET /api/sessions/:sessionId/bots/:configHash/config`
+- **Description:** Get the bot configuration for a run.
+- **Returns:** `BotConfiguration` (can be included in the bot run record as well)
+
+---
+
+### 2.5. **(Optional) Aggregations**
+
+#### `GET /api/sessions/:sessionId/bots/aggregate`
+- **Description:** Get aggregate stats for all bots in a session (e.g., best/worst profit, average, count by status).
+- **Returns:** Object with aggregate stats.
+
+---
+
+## 3. Backend Implementation Notes
+
+- **Use your existing registry classes** (`SessionRegistry`, `BotRegistry`, `PerformanceRegistry`) in the API handlers.
+- **Maintain secondary indexes** (sets/sorted sets) for each session to allow fast lookup and filtering.
+- **On every bot run write/update:**
+  - Add configHash to `session:{sessionId}:bots`
+  - Add to `session:{sessionId}:bots:status:{status}`
+  - Add to `session:{sessionId}:bots:profit` (with profit as score)
+  - Remove from old status set if status changes
+
+- **For filtering:**
+  - By status: use `SMEMBERS` on the status set
+  - By profit: use `ZRANGEBYSCORE` on the profit sorted set
+  - For combined filters: intersect sets in backend code
+
+- **For pagination:**
+  - Use `SSCAN`/`ZSCAN` with cursor for large sets
+
+---
+
+## 4. Frontend Requirements
+
+- **Session List Page:** Table of sessions, sortable/filterable.
+- **Session Detail Page:**  
+  - Session summary
+  - Paginated table of bot runs (with filters for status, profit, etc.)
+  - Clicking a bot run shows:
+    - Bot configuration
+    - Performance metrics
+    - Trades (paginated if needed)
+    - Equity curve chart (from trades)
+- **Global Search:** (optional) Search by symbol, timeframe, etc.
+- **Responsive UI:** Must handle large datasets gracefully (pagination, infinite scroll, etc.)
+
+---
+
+## 5. Security & Auth
+
+- **API should be protected** (JWT, session, or at least basic auth).
+- **Rate limiting** to prevent abuse.
+
+---
+
+## 6. Example API Usage
+
+### List sessions
+```http
+GET /api/sessions
+```
+
+### List bots in a session, completed only, profit > 1000, first 50
+```http
+GET /api/sessions/BTCUSDT:1h:1234567890:1234569999/bots?status=completed&minProfit=1000&limit=50
+```
+
+### Get bot run details
+```http
+GET /api/sessions/BTCUSDT:1h:1234567890:1234569999/bots/abcdef123456
+```
+
+### Get trades for a bot run
+```http
+GET /api/sessions/BTCUSDT:1h:1234567890:1234569999/bots/abcdef123456/trades
+```
+
+---
+
+## 7. Available Data
+
+- **Sessions:** All metadata, run counts, best/worst, etc.
+- **Bot runs:** Full config, status, performance, market history.
+- **Trades:** All trades for each bot run.
+- **Indexes:** For fast lookup by session, status, profit.
+
+---
+
+## 8. Redis Key Patterns
+
+- `bot_registry:session_current:{symbol}:{timeframe}:{startTimestamp}:{endTimestamp}` — session summary
+- `bot_registry:run:{symbol}:{timeframe}:{startTimestamp}:{endTimestamp}:{configHash}` — bot run
+- `bot_registry:trades:{symbol}:{timeframe}:{startTimestamp}:{endTimestamp}:{configHash}` — trades
+- `session:{sessionId}:bots` — set of configHashes for session
+- `session:{sessionId}:bots:status:{status}` — set of configHashes by status
+- `session:{sessionId}:bots:profit` — sorted set of configHashes by profit
+
+---
+
+## 9. Implementation Priorities
+
+1. **API endpoints for session and bot listing, with pagination and filtering**
+2. **Efficient Redis indexing for fast queries**
+3. **Frontend with paginated tables and detail views**
+4. **Security/auth**
+5. **(Optional) Aggregation endpoints**
+
+---
+
+## 10. Open Questions
+
+- What frontend stack? (React recommended)
+- Any real-time updates needed? (WebSocket for live updates)
+- Any admin features (delete, edit, etc.)?
+
+---
+
+**This document should be enough for a competent backend/frontend team to start building a scalable, efficient dashboard for your Redis-stored backtest data.**  
+If you want code samples for any endpoint or Redis index maintenance, just ask.
