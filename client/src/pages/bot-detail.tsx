@@ -111,12 +111,12 @@ export default function BotDetail() {
               <Skeleton className="h-6 w-16 mt-1" />
             ) : (
               <p className={`mt-1 text-lg font-semibold ${
-                (botRun?.resultsMetadata.profit || 0) >= 0 
+                (botRun?.resultsMetadata?.performance?.profit || 0) >= 0 
                   ? 'text-emerald-600' 
                   : 'text-red-600'
               }`}>
-                {(botRun?.resultsMetadata.profit || 0) >= 0 ? '+' : ''}
-                {botRun?.resultsMetadata.profit.toFixed(1)}%
+                {(botRun?.resultsMetadata?.performance?.profit || 0) >= 0 ? '+' : ''}
+                {botRun?.resultsMetadata?.performance?.profit?.toFixed(1) || '0.0'}%
               </p>
             )}
           </CardContent>
@@ -151,7 +151,7 @@ export default function BotDetail() {
                 <Skeleton className="h-5 w-12 mt-1" />
               ) : (
                 <dd className="mt-1 text-sm text-gray-900">
-                  {botRun?.resultsMetadata.trades || 0}
+                  {botRun?.resultsMetadata?.performance?.tradeCount || 0}
                 </dd>
               )}
             </div>
@@ -162,7 +162,7 @@ export default function BotDetail() {
                 <Skeleton className="h-5 w-16 mt-1" />
               ) : (
                 <dd className="mt-1 text-sm text-gray-900">
-                  {botRun?.resultsMetadata.winRate || 0}%
+                  {botRun?.resultsMetadata?.performance?.winRate?.toFixed(1) || '0.0'}%
                 </dd>
               )}
             </div>
@@ -173,7 +173,7 @@ export default function BotDetail() {
                 <Skeleton className="h-5 w-12 mt-1" />
               ) : (
                 <dd className="mt-1 text-sm text-gray-900">
-                  {botRun?.resultsMetadata.profitFactor?.toFixed(1) || '-'}
+                  {botRun?.resultsMetadata?.performance?.profitFactor?.toFixed(1) || '-'}
                 </dd>
               )}
             </div>
@@ -184,7 +184,7 @@ export default function BotDetail() {
                 <Skeleton className="h-5 w-14 mt-1" />
               ) : (
                 <dd className="mt-1 text-sm text-gray-900">
-                  {botRun?.resultsMetadata.maxDrawdown?.toFixed(1) || '-'}%
+                  {botRun?.resultsMetadata?.performance?.maxDrawdown?.toFixed(1) || '-'}%
                 </dd>
               )}
             </div>
@@ -195,7 +195,7 @@ export default function BotDetail() {
                 <Skeleton className="h-5 w-20 mt-1" />
               ) : (
                 <dd className="mt-1 text-sm text-gray-900">
-                  {botRun?.resultsMetadata.avgTradeDuration || '-'}
+                  {botRun?.resultsMetadata?.performance?.avgTradeDuration || '-'}
                 </dd>
               )}
             </div>
@@ -206,7 +206,7 @@ export default function BotDetail() {
                 <Skeleton className="h-5 w-12 mt-1" />
               ) : (
                 <dd className="mt-1 text-sm text-gray-900">
-                  {botRun?.resultsMetadata.sharpeRatio?.toFixed(1) || '-'}
+                  {botRun?.resultsMetadata?.performance?.sharpe?.toFixed(1) || '-'}
                 </dd>
               )}
             </div>

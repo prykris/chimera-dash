@@ -12,8 +12,47 @@ import { Label } from "@/components/ui/label";
 import { ChevronUp, ChevronDown, TrendingUp, Layers, BarChart2 } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
 
-// Mock market data for demo visualization
+// Fetch market data from exchange API
+const fetchMarketData = async (symbol: string, interval = '1d', limit = 30): Promise<any[]> => {
+  try {
+    // First try our backend proxy to bypass CORS issues
+    const response = await apiRequest(`/api/market/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`);
+    
+    if (response.ok) {
+      const data = await response.json();
+      return data;
+    }
+    
+    // If our proxy fails, try direct public API (in development only)
+    // Note: this will likely fail due to CORS in browser environments
+    const fallbackUrl = `https://api.binance.com/api/v3/klines?symbol=${symbol.replace('/', '')}&interval=${interval}&limit=${limit}`;
+    const fallbackResponse = await fetch(fallbackUrl);
+    
+    if (!fallbackResponse.ok) {
+      throw new Error(`Failed to fetch market data: ${fallbackResponse.statusText}`);
+    }
+    
+    const rawData = await fallbackResponse.json();
+    
+    // Transform the Binance kline data format to our app format
+    return rawData.map((kline: any) => ({
+      date: new Date(kline[0]).toISOString().split('T')[0], // Open time
+      price: parseFloat(kline[4]), // Close price
+      volume: parseFloat(kline[5]), // Volume
+      high: parseFloat(kline[2]),
+      low: parseFloat(kline[3]),
+      open: parseFloat(kline[1]), 
+    }));
+  } catch (error) {
+    console.error("Error fetching market data:", error);
+    return [];
+  }
+};
+
+// Fallback to generate market data if API fails
 const generateMarketData = (days = 30, basePrice = 40000, volatility = 0.03) => {
   const data = [];
   let price = basePrice;
@@ -42,25 +81,48 @@ const generateMarketData = (days = 30, basePrice = 40000, volatility = 0.03) => 
 
 export default function MarketOverview() {
   const [marketData, setMarketData] = useState<any[]>([]);
-  const [selectedSymbol, setSelectedSymbol] = useState("BTC/USD");
+  const [selectedSymbol, setSelectedSymbol] = useState("BTCUSDT");
   const [isLoading, setIsLoading] = useState(true);
+  const [useRealData, setUseRealData] = useState(true);
+  const { toast } = useToast();
   
   useEffect(() => {
-    // Simulate loading delay
-    setIsLoading(true);
-    
-    const timer = setTimeout(() => {
-      // Generate new data for selected symbol
-      const basePrice = selectedSymbol === "BTC/USD" ? 40000 : 
-                       selectedSymbol === "ETH/USD" ? 2500 :
-                       selectedSymbol === "SOL/USD" ? 100 : 500;
+    const fetchData = async () => {
+      setIsLoading(true);
+      
+      if (useRealData) {
+        try {
+          // Try to get real market data
+          const symbol = selectedSymbol.replace('/', '');
+          const data = await fetchMarketData(symbol);
+          
+          if (data && data.length > 0) {
+            setMarketData(data);
+            setIsLoading(false);
+            return;
+          }
+        } catch (error) {
+          console.error("Failed to fetch real market data:", error);
+          toast({
+            title: "Could not fetch exchange data",
+            description: "Using fallback data instead. Check network connection or API status.",
+            variant: "destructive"
+          });
+          setUseRealData(false); // Switch to fallback data
+        }
+      }
+      
+      // Fallback to generated data if real data fetch fails
+      const basePrice = selectedSymbol === "BTCUSDT" ? 40000 : 
+                       selectedSymbol === "ETHUSDT" ? 2500 :
+                       selectedSymbol === "SOLUSDT" ? 100 : 500;
                        
       setMarketData(generateMarketData(30, basePrice));
       setIsLoading(false);
-    }, 1000);
+    };
     
-    return () => clearTimeout(timer);
-  }, [selectedSymbol]);
+    fetchData();
+  }, [selectedSymbol, useRealData, toast]);
   
   // Get current price and calculate change
   const currentPrice = marketData.length > 0 ? marketData[marketData.length - 1].price : 0;
@@ -102,10 +164,10 @@ export default function MarketOverview() {
                 <SelectValue placeholder="Select symbol" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="BTC/USD">BTC/USD</SelectItem>
-                <SelectItem value="ETH/USD">ETH/USD</SelectItem>
-                <SelectItem value="SOL/USD">SOL/USD</SelectItem>
-                <SelectItem value="XRP/USD">XRP/USD</SelectItem>
+                <SelectItem value="BTCUSDT">BTC/USDT</SelectItem>
+                <SelectItem value="ETHUSDT">ETH/USDT</SelectItem>
+                <SelectItem value="SOLUSDT">SOL/USDT</SelectItem>
+                <SelectItem value="XRPUSDT">XRP/USDT</SelectItem>
               </SelectContent>
             </Select>
           </div>

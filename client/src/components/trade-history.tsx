@@ -64,18 +64,24 @@ export default function TradeHistory({ sessionId, configHash }: TradeHistoryProp
               <TableRow key={trade.id || index}>
                 <TableCell>
                   <Badge variant="outline" className={
-                    trade.type === 'LONG' 
-                    ? "bg-green-100 text-green-800" 
-                    : "bg-red-100 text-red-800"
+                    trade.type ? (
+                      trade.type === 'LONG' 
+                        ? "bg-green-100 text-green-800" 
+                        : "bg-red-100 text-red-800"
+                    ) : (
+                      trade.entrySize > 0 
+                        ? "bg-green-100 text-green-800" 
+                        : "bg-red-100 text-red-800"
+                    )
                   }>
-                    {trade.type}
+                    {trade.type || (trade.entrySize > 0 ? 'LONG' : 'SHORT')}
                   </Badge>
                 </TableCell>
                 <TableCell className="text-sm text-gray-500">
-                  {formatDate(trade.entryTime)}
+                  {formatDate(trade.entryTimestamp)}
                 </TableCell>
                 <TableCell className="text-sm text-gray-500">
-                  {formatDate(trade.exitTime)}
+                  {formatDate(trade.exitTimestamp)}
                 </TableCell>
                 <TableCell className="text-sm text-gray-900">
                   {trade.entryPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })}
@@ -84,11 +90,11 @@ export default function TradeHistory({ sessionId, configHash }: TradeHistoryProp
                   {trade.exitPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })}
                 </TableCell>
                 <TableCell className={
-                  trade.profitLoss >= 0 
+                  trade.realizedPnl >= 0 
                   ? "text-sm text-emerald-600 font-medium" 
                   : "text-sm text-red-600 font-medium"
                 }>
-                  {trade.profitLoss >= 0 ? '+' : ''}{trade.profitLoss.toFixed(1)}%
+                  {trade.realizedPnl >= 0 ? '+' : ''}{trade.realizedPnl.toFixed(1)}%
                 </TableCell>
               </TableRow>
             ))
