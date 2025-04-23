@@ -1,6 +1,5 @@
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Bell, Search } from "lucide-react";
+import { Search } from "lucide-react";
 
 type HeaderProps = {
   title?: string;
@@ -36,18 +35,6 @@ export default function Header({ title = "Dashboard", onMenuClick }: HeaderProps
               />
             </div>
           </div>
-        </div>
-        
-        {/* Notifications */}
-        <div className="ml-4 flex items-center md:ml-6">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="rounded-full p-1 text-gray-400 hover:text-gray-500"
-          >
-            <span className="sr-only">View notifications</span>
-            <Bell className="h-5 w-5" />
-          </Button>
         </div>
       </div>
     </div>
