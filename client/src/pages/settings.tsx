@@ -14,6 +14,18 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircle, CheckCircle2 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+
+// Define response types
+interface RedisStatusResponse {
+  connected: boolean;
+}
+
+interface RedisConfigResponse {
+  success: boolean;
+  connected: boolean;
+  message: string;
+}
 
 const redisFormSchema = z.object({
   host: z.string().min(1, {
@@ -35,7 +47,7 @@ export default function Settings() {
   const [configMessage, setConfigMessage] = useState<string>("");
   
   // Fetch current Redis connection status
-  const { data: redisStatus } = useQuery({
+  const { data: redisStatus } = useQuery<RedisStatusResponse>({
     queryKey: ['/api/status/redis'],
     refetchInterval: 5000, // Refresh every 5 seconds
   });
@@ -132,11 +144,22 @@ export default function Settings() {
             <CardContent>
               {/* Redis Connection Status */}
               <div className="mb-6">
-                <div className="flex items-center gap-2 mb-2">
-                  <h3 className="text-sm font-medium">Connection Status:</h3>
-                  <div className="flex items-center gap-1">
-                    <div className={`w-2 h-2 rounded-full ${redisStatus?.connected ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                    <span className="text-sm">{redisStatus?.connected ? 'Connected' : 'Disconnected'}</span>
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-medium">Connection Status:</h3>
+                    <Badge 
+                      className={redisStatus?.connected ? "bg-green-100 text-green-800 hover:bg-green-100" : "bg-red-100 text-red-800 hover:bg-red-100"}
+                    >
+                      {redisStatus?.connected ? 'Connected' : 'Disconnected'}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">
+                      {redisStatus?.connected 
+                        ? "Redis server is currently available" 
+                        : "Redis server is currently unavailable"
+                      }
+                    </span>
                   </div>
                 </div>
                 
