@@ -7,7 +7,7 @@ class RedisClient {
   private connecting: boolean = false;
   private connectionRetries: number = 0;
   private maxRetries: number = 1; // Only try once during startup
-  
+
   constructor() {
     this.client = createClient({
       url: process.env.REDIS_URL || 'redis://localhost:6379',
@@ -51,7 +51,7 @@ class RedisClient {
       if (this.connecting || this.isConnected) {
         return this.isConnected;
       }
-      
+
       this.connecting = true;
       console.log('Attempting to connect to Redis...');
       await this.client.connect();
@@ -87,14 +87,14 @@ class RedisClient {
       if (!this.isConnected) {
         return null;
       }
-      
+
       const key = formatSessionKey(sessionId);
       const data = await this.client.get(key);
-      
+
       if (!data) {
         return null;
       }
-      
+
       return JSON.parse(data) as SessionSummary;
     } catch (error) {
       console.error(`Error getting session ${sessionId}:`, error);
@@ -107,17 +107,17 @@ class RedisClient {
       if (!this.isConnected) {
         return [];
       }
-      
+
       const sessionKeys = await this.scanKeys(`${REDIS_KEYS.SESSION}:*`);
       const sessions: SessionSummary[] = [];
-      
+
       for (const key of sessionKeys) {
         const data = await this.client.get(key);
         if (data) {
           sessions.push(JSON.parse(data) as SessionSummary);
         }
       }
-      
+
       return sessions;
     } catch (error) {
       console.error('Error getting all sessions:', error);
@@ -131,14 +131,14 @@ class RedisClient {
       if (!this.isConnected) {
         return null;
       }
-      
+
       const key = formatBotRunKey(sessionId, configHash);
       const data = await this.client.get(key);
-      
+
       if (!data) {
         return null;
       }
-      
+
       return JSON.parse(data) as BacktestRunRecord;
     } catch (error) {
       console.error(`Error getting bot run ${sessionId}:${configHash}:`, error);
@@ -147,7 +147,7 @@ class RedisClient {
   }
 
   async getBotRunsForSession(
-    sessionId: string, 
+    sessionId: string,
     options: {
       status?: string;
       minProfit?: number;
@@ -163,40 +163,40 @@ class RedisClient {
       if (!this.isConnected) {
         return { bots: [], nextCursor: '0' };
       }
-      
+
       const { status, minProfit, maxProfit, cursor = '0', limit = 50 } = options;
       const setKey = formatSessionBotsSetKey(sessionId);
-      
+
       // Get hashes from the session's bot set using SSCAN
       let configHashes: string[] = [];
       let nextCursor = '0';
-      
+
       try {
         // Use a try-catch specifically for this operation
-        const result = await this.client.sScan(setKey, cursor, { COUNT: limit });
-        nextCursor = result.cursor;
+        const result = await this.client.sScan(setKey, Number(cursor), { COUNT: limit });
+        nextCursor = String(result.cursor);
         configHashes = result.members;
       } catch (err) {
         console.error(`Error scanning set ${setKey}:`, err);
         return { bots: [], nextCursor: '0' };
       }
-      
+
       const bots = [];
-      
+
       // Get details for each bot
       for (const configHash of configHashes) {
         const botRunKey = formatBotRunKey(sessionId, configHash);
         const data = await this.client.get(botRunKey);
-        
+
         if (data) {
           const botRun = JSON.parse(data) as BacktestRunRecord;
           const profit = botRun.resultsMetadata?.performance?.profit ?? 0;
-          
+
           // Filter by status if specified
           if (status && botRun.status !== status) {
             continue;
           }
-          
+
           // Filter by profit range if specified
           if (
             (minProfit !== undefined && profit < minProfit) ||
@@ -204,7 +204,7 @@ class RedisClient {
           ) {
             continue;
           }
-          
+
           bots.push({
             configHash,
             status: botRun.status,
@@ -214,7 +214,7 @@ class RedisClient {
           });
         }
       }
-      
+
       return {
         bots,
         nextCursor: String(nextCursor)
@@ -231,14 +231,14 @@ class RedisClient {
       if (!this.isConnected) {
         return [];
       }
-      
+
       const key = formatTradesKey(sessionId, configHash);
       const data = await this.client.get(key);
-      
+
       if (!data) {
         return [];
       }
-      
+
       return JSON.parse(data) as Trade[];
     } catch (error) {
       console.error(`Error getting trades for bot run ${sessionId}:${configHash}:`, error);
@@ -268,10 +268,10 @@ class RedisClient {
           worstProfit: 0
         };
       }
-      
+
       const setKey = formatSessionBotsSetKey(sessionId);
       const configHashes = await this.client.sMembers(setKey);
-      
+
       if (configHashes.length === 0) {
         return {
           totalBots: 0,
@@ -283,7 +283,7 @@ class RedisClient {
           worstProfit: 0
         };
       }
-      
+
       let totalBots = 0;
       let completedBots = 0;
       let runningBots = 0;
@@ -291,15 +291,15 @@ class RedisClient {
       let totalProfit = 0;
       let bestProfit = -Infinity;
       let worstProfit = Infinity;
-      
+
       for (const configHash of configHashes) {
         const botRunKey = formatBotRunKey(sessionId, configHash);
         const data = await this.client.get(botRunKey);
-        
+
         if (data) {
           const botRun = JSON.parse(data) as BacktestRunRecord;
           totalBots++;
-          
+
           if (botRun.status === 'completed') {
             completedBots++;
           } else if (botRun.status === 'running') {
@@ -307,22 +307,22 @@ class RedisClient {
           } else if (botRun.status === 'failed') {
             failedBots++;
           }
-          
+
           const profit = botRun.resultsMetadata?.performance?.profit ?? 0;
           totalProfit += profit;
-          
+
           if (profit > bestProfit) {
             bestProfit = profit;
           }
-          
+
           if (profit < worstProfit) {
             worstProfit = profit;
           }
         }
       }
-      
+
       const avgProfit = totalBots > 0 ? totalProfit / totalBots : 0;
-      
+
       return {
         totalBots,
         completedBots,
@@ -349,27 +349,27 @@ class RedisClient {
   // Helper methods
   private async scanKeys(pattern: string): Promise<string[]> {
     const keys: string[] = [];
-    
+
     try {
       if (!this.isConnected) {
         return keys;
       }
-      
+
       let cursorStr = '0';
-      
+
       do {
         // Use the correct type signature for scan in node-redis
-        const result = await this.client.scan(cursorStr, {
+        const result = await this.client.scan(Number(cursorStr), {
           MATCH: pattern,
           COUNT: 100
         });
-        cursorStr = result.cursor;
+        cursorStr = String(result.cursor);
         keys.push(...result.keys);
       } while (cursorStr !== '0');
     } catch (error) {
       console.error(`Error scanning keys with pattern ${pattern}:`, error);
     }
-    
+
     return keys;
   }
 }
