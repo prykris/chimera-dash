@@ -1,0 +1,90 @@
+import { LogContext } from '../../../core/src/utils/logging/index.js';
+import type { IRegistryDriver } from './IBotRegistryDriver.js';
+import { ContextKeyBuilder, BacktestContext } from './ContextKeyBuilder.js';
+
+export type SessionStatus = 'running' | 'paused' | 'completed' | 'failed' | 'stopped';
+
+/**
+ * Summary of a backtest session, including status for pause/resume/stop control.
+ */
+export interface SessionSummary {
+    symbol: string;
+    timeframe: string;
+    startTimestamp: number;
+    endTimestamp: number;
+    runCount: number;
+    lastConfigHash: string;
+    lastUpdate: number;
+    bestProfit: number;
+    bestConfigHash: string;
+    currentProfit: number;
+    currentStatus: SessionStatus; // 'running', 'paused', 'completed', 'failed', 'stopped'
+    avgProfit: number;
+    errorCount: number;
+    completedRuns: number;
+    active: boolean;
+    notes?: string;
+}
+
+export class SessionRegistry {
+    private readonly logger = LogContext.createLogger('SessionRegistry');
+    private readonly driver: IRegistryDriver;
+
+    constructor(driver: IRegistryDriver) {
+        this.driver = driver;
+        this.logger.info('SessionRegistry initialized with registry driver.');
+    }
+
+    async updateSession(ctx: BacktestContext, summary: SessionSummary): Promise<boolean> {
+        const key = ContextKeyBuilder.sessionKey(ctx);
+        try {
+            const result = await this.driver.set<SessionSummary>(key, summary);
+            if (!result) {
+                this.logger.error(`Failed to update session for key ${key}.`);
+                return false;
+            }
+            this.logger.info(`Updated session for key ${key}.`);
+            return true;
+        } catch (error) {
+            this.logger.error(`Error updating session for key ${key}:`, error);
+            return false;
+        }
+    }
+
+    async fetchSession(ctx: BacktestContext): Promise<SessionSummary | null> {
+        const key = ContextKeyBuilder.sessionKey(ctx);
+        try {
+            const raw = await this.driver.get<SessionSummary>(key);
+            if (!raw) return null;
+            return raw;
+        } catch (error) {
+            this.logger.error(`Error fetching session for key ${key}:`, error);
+            return null;
+        }
+    }
+
+    /**
+     * Lists all session summaries by scanning Redis for session keys.
+     * Returns an array of SessionSummary objects.
+     */
+    async listSessions(): Promise<SessionSummary[]> {
+        // TODO: Move scan logic to driver interface for full backend-agnostic support
+        const redis = (this.driver as any).redis;
+        const pattern = 'bot_registry:session_current:*';
+        let cursor = '0';
+        let keys: string[] = [];
+        do {
+            const [nextCursor, foundKeys] = await redis.scan(cursor, 'MATCH', pattern, 'COUNT', 100);
+            cursor = nextCursor;
+            keys = keys.concat(foundKeys);
+        } while (cursor !== '0');
+        const sessions: SessionSummary[] = [];
+        for (const key of keys) {
+            try {
+                const summary = await this.driver.get<SessionSummary>(key);
+                if (summary) sessions.push(summary);
+            } catch { }
+        }
+        return sessions;
+    }
+} 

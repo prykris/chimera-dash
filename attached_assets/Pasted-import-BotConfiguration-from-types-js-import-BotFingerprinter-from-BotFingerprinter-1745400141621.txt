@@ -1,0 +1,171 @@
+import { BotConfiguration } from './types.js';
+import { BotFingerprinter } from './BotFingerprinter.js';
+import { LogContext } from '../../../core/src/utils/logging/index.js';
+import { ContextKeyBuilder, BacktestContext } from './ContextKeyBuilder.js';
+import { IRegistryDriver } from './IBotRegistryDriver.js';
+
+// Define possible statuses for a backtest run
+export type BacktestRunStatus = 'completed' | 'running' | 'failed' | 'not_found';
+
+// Interface for the data stored (can be reused by driver implementations)
+export interface BacktestRunRecord {
+    status: Exclude<BacktestRunStatus, 'not_found'>;
+    botId: string;
+    configHash: string;
+    lastUpdated: number;
+    resultsMetadata?: Record<string, any> & {
+        performance?: {
+            profit?: number;
+            sharpe?: number;
+            maxDrawdown?: number;
+            winRate?: number;
+            // Add more as needed
+        };
+        marketHistory?: {
+            fills: any[]; // FillEvent[]
+            orders: any[]; // OrderResponse[]
+        };
+    };
+    configuration?: BotConfiguration;
+}
+
+/**
+ * Manages the logic for recording and querying backtest run statuses,
+ * delegating actual storage operations to a provided driver.
+ * Key generation and status interpretation logic resides here.
+ */
+export class BotRegistry {
+    private readonly logger = LogContext.createLogger('BotRegistry');
+    private readonly driver: IRegistryDriver; // Use the driver interface
+
+    /**
+     * Creates an instance of BotRegistry.
+     * @param driver An instance implementing the IBotRegistryDriver interface.
+     */
+    constructor(driver: IRegistryDriver) {
+        if (!driver || typeof driver.get !== 'function' || typeof driver.set !== 'function' || typeof driver.delete !== 'function') {
+            throw new Error('Valid IRegistryDriver instance is required.');
+        }
+        this.driver = driver;
+        this.logger.info('BotRegistry initialized with a storage driver.');
+    }
+
+    /**
+     * Checks the status of a specific backtest run by querying the driver.
+     * @param ctx The BacktestContext (must include configHash)
+     * @returns An object containing the status and the record if found.
+     */
+    async checkBacktestRunStatus(ctx: BacktestContext): Promise<{ status: BacktestRunStatus, record?: BacktestRunRecord, configuration?: BotConfiguration }> {
+        if (!ctx.configHash) throw new Error('configHash required in BacktestContext');
+        const key = ContextKeyBuilder.runKey(ctx);
+        try {
+            const record = await this.driver.get<BacktestRunRecord>(key);
+            if (!record) {
+                this.logger.debug(`No record found via driver for key: ${key}`);
+                return { status: 'not_found' };
+            }
+            if (record.status && record.botId && record.configHash === ctx.configHash) {
+                this.logger.debug(`Record found via driver for key ${key}: Status=${record.status}, BotID=${record.botId}`);
+                return { status: record.status, record, configuration: record.configuration };
+            } else {
+                this.logger.warn(`Invalid or mismatched record retrieved from driver for key ${key}. Expected hash ${ctx.configHash}, got:`, record);
+                return { status: 'not_found' };
+            }
+        } catch (error) {
+            this.logger.error(`Driver error checking backtest run status for key ${key}:`, error);
+            return { status: 'not_found' };
+        }
+    }
+
+    /**
+     * Records the start of a backtest run via the driver, marking it as 'running'.
+     * @param ctx The BacktestContext (must include configHash)
+     * @param botId The botId for this run
+     * @param ttlSeconds Optional TTL for the record
+     * @returns True if the driver reported success, false otherwise.
+     */
+    async recordBacktestRunStart(ctx: BacktestContext, botId: string, ttlSeconds: number = 86400): Promise<boolean> {
+        if (!ctx.configHash) throw new Error('configHash required in BacktestContext');
+        const key = ContextKeyBuilder.runKey(ctx);
+        const record: BacktestRunRecord = {
+            status: 'running',
+            botId: botId,
+            configHash: ctx.configHash,
+            lastUpdated: Date.now(),
+        };
+        try {
+            const success = await this.driver.set<BacktestRunRecord>(key, record, ttlSeconds);
+            if (success) {
+                this.logger.info(`Recorded backtest run start via driver for key ${key} (Bot ID: ${botId}, TTL: ${ttlSeconds}s)`);
+            } else {
+                this.logger.warn(`Driver reported failure recording backtest run start for key ${key}`);
+            }
+            return success;
+        } catch (error) {
+            this.logger.error(`Driver error recording backtest run start for key ${key}:`, error);
+            return false;
+        }
+    }
+
+    /**
+     * Records the final outcome (completion or failure) of a backtest run via the driver.
+     * @param ctx The BacktestContext (must include configHash)
+     * @param botId The botId for this run
+     * @param status 'completed' or 'failed'
+     * @param botConfiguration The bot configuration
+     * @param resultsMetadata Optional results metadata
+     * @returns True if the driver reported success, false otherwise.
+     */
+    async recordBacktestRunCompletion(
+        ctx: BacktestContext,
+        botId: string,
+        status: 'completed' | 'failed',
+        botConfiguration: BotConfiguration,
+        resultsMetadata?: Record<string, any>
+    ): Promise<boolean> {
+        if (!ctx.configHash) throw new Error('configHash required in BacktestContext');
+        const key = ContextKeyBuilder.runKey(ctx);
+        const record: BacktestRunRecord = {
+            status: status,
+            botId: botId,
+            configHash: ctx.configHash,
+            lastUpdated: Date.now(),
+            resultsMetadata: resultsMetadata,
+            configuration: botConfiguration,
+        };
+        try {
+            const success = await this.driver.set<BacktestRunRecord>(key, record, 0);
+            if (success) {
+                this.logger.info(`Recorded backtest run completion status '${status}' via driver for key ${key} (Bot ID: ${botId})`);
+            } else {
+                this.logger.warn(`Driver reported failure recording backtest run completion for key ${key}`);
+            }
+            return success;
+        } catch (error) {
+            this.logger.error(`Driver error recording backtest run completion for key ${key}:`, error);
+            return false;
+        }
+    }
+
+    /**
+     * Deletes a specific backtest run record via the driver.
+     * @param ctx The BacktestContext (must include configHash)
+     * @returns True if the driver reported success, false otherwise.
+     */
+    async deleteBacktestRunRecord(ctx: BacktestContext): Promise<boolean> {
+        if (!ctx.configHash) throw new Error('configHash required in BacktestContext');
+        const key = ContextKeyBuilder.runKey(ctx);
+        try {
+            const success = await this.driver.delete(key);
+            if (success) {
+                this.logger.info(`Deleted record via driver for key ${key}.`);
+            } else {
+                this.logger.warn(`Driver reported failure or record not found for deletion on key ${key}.`);
+            }
+            return success;
+        } catch (error) {
+            this.logger.error(`Driver error deleting record for key ${key}:`, error);
+            return false;
+        }
+    }
+} 

@@ -50,7 +50,7 @@ export default function SessionDetail() {
             )}
           </p>
         </div>
-        <Button variant="outline">
+        <Button variant="outline" onClick={() => window.location.href = "/sessions"}>
           Back to Sessions
         </Button>
       </div>

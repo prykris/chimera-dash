@@ -79,9 +79,12 @@ export default function BotDetail() {
             )}
           </h1>
           <p className="mt-1 text-sm text-gray-500">
-            <Link href={`/sessions/${sessionId}`}>
-              <a className="text-primary-600 hover:text-primary-800">Back to session</a>
-            </Link>
+            <span 
+              className="text-primary-600 hover:text-primary-800 cursor-pointer"
+              onClick={() => window.location.href = `/sessions/${sessionId}`}
+            >
+              Back to session
+            </span>
           </p>
         </div>
       </div>
