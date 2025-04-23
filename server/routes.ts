@@ -113,6 +113,47 @@ export async function registerRoutes(app: Express): Promise<void> {
   app.get("/api/status/redis", (req: Request, res: Response) => {
     res.json({ connected: storage.isRedisConnected() });
   });
+  
+  // Redis configuration endpoint
+  app.post("/api/config/redis", async (req: Request, res: Response) => {
+    try {
+      const { host, port, password, database } = req.body;
+      
+      // Validate the configuration
+      if (!host || !port || isNaN(Number(port)) || port <= 0 || port > 65535) {
+        return res.status(400).json({ error: 'Invalid Redis configuration' });
+      }
+      
+      // Format the Redis URL from the components
+      const redisUrl = `redis://${password ? `:${password}@` : ''}${host}:${port}/${database || 0}`;
+      
+      // Set the environment variable for the current process
+      process.env.REDIS_URL = redisUrl;
+      
+      // Attempt to reconnect to Redis with the new configuration
+      try {
+        // First disconnect if connected
+        await redisClient.disconnect();
+        // Then try to connect with new configuration
+        const connected = await redisClient.connect();
+        
+        res.json({ 
+          success: connected, 
+          connected,
+          message: connected ? 'Redis connection updated successfully' : 'Failed to connect with new settings'
+        });
+      } catch (error) {
+        console.error('Error reconnecting to Redis:', error);
+        res.status(500).json({ 
+          error: 'Failed to connect to Redis with new settings',
+          message: error instanceof Error ? error.message : 'Unknown error'
+        });
+      }
+    } catch (error) {
+      console.error('Error in Redis configuration endpoint:', error);
+      res.status(500).json({ error: 'Failed to update Redis configuration' });
+    }
+  });
 
   // Don't start the server here, let the main index.ts handle it
   return Promise.resolve();

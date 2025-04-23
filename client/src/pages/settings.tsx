@@ -10,6 +10,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { Database, ServerCog, Shield } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { AlertCircle, CheckCircle2 } from "lucide-react";
 
 const redisFormSchema = z.object({
   host: z.string().min(1, {
@@ -27,6 +31,50 @@ const redisFormSchema = z.object({
 export default function Settings() {
   const [activeTab, setActiveTab] = useState("connection");
   const { toast } = useToast();
+  const [configSuccess, setConfigSuccess] = useState<boolean | null>(null);
+  const [configMessage, setConfigMessage] = useState<string>("");
+  
+  // Fetch current Redis connection status
+  const { data: redisStatus } = useQuery({
+    queryKey: ['/api/status/redis'],
+    refetchInterval: 5000, // Refresh every 5 seconds
+  });
+  
+  // Redis connection mutation
+  const redisMutation = useMutation({
+    mutationFn: async (data: z.infer<typeof redisFormSchema>) => {
+      return apiRequest('/api/config/redis', {
+        method: 'POST',
+        body: JSON.stringify(data),
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+    },
+    onSuccess: (data) => {
+      toast({
+        title: data.success ? "Redis connected successfully" : "Redis connection failed",
+        description: data.message || (data.success ? "The Redis connection settings have been saved." : "Failed to connect to Redis with the provided settings."),
+        variant: data.success ? "default" : "destructive"
+      });
+      
+      setConfigSuccess(data.success);
+      setConfigMessage(data.message || "");
+      
+      // Invalidate Redis status query to refresh the status
+      queryClient.invalidateQueries({ queryKey: ['/api/status/redis'] });
+    },
+    onError: (error) => {
+      toast({
+        title: "Failed to update Redis settings",
+        description: error instanceof Error ? error.message : "An unknown error occurred",
+        variant: "destructive"
+      });
+      
+      setConfigSuccess(false);
+      setConfigMessage(error instanceof Error ? error.message : "An unknown error occurred");
+    }
+  });
   
   // Redis connection form
   const redisForm = useForm<z.infer<typeof redisFormSchema>>({
@@ -40,11 +88,12 @@ export default function Settings() {
   });
   
   function onRedisSubmit(values: z.infer<typeof redisFormSchema>) {
-    toast({
-      title: "Redis settings updated",
-      description: "The Redis connection settings have been saved.",
-    });
-    console.log(values);
+    // Reset status indicators
+    setConfigSuccess(null);
+    setConfigMessage("");
+    
+    // Submit the form data
+    redisMutation.mutate(values);
   }
   
   return (
@@ -81,6 +130,32 @@ export default function Settings() {
               </CardDescription>
             </CardHeader>
             <CardContent>
+              {/* Redis Connection Status */}
+              <div className="mb-6">
+                <div className="flex items-center gap-2 mb-2">
+                  <h3 className="text-sm font-medium">Connection Status:</h3>
+                  <div className="flex items-center gap-1">
+                    <div className={`w-2 h-2 rounded-full ${redisStatus?.connected ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                    <span className="text-sm">{redisStatus?.connected ? 'Connected' : 'Disconnected'}</span>
+                  </div>
+                </div>
+                
+                {/* Configuration Result Alert */}
+                {configSuccess !== null && (
+                  <Alert variant={configSuccess ? "default" : "destructive"} className="mt-2">
+                    {configSuccess ? (
+                      <CheckCircle2 className="h-4 w-4" />
+                    ) : (
+                      <AlertCircle className="h-4 w-4" />
+                    )}
+                    <AlertTitle>{configSuccess ? "Connection Successful" : "Connection Failed"}</AlertTitle>
+                    <AlertDescription>
+                      {configMessage}
+                    </AlertDescription>
+                  </Alert>
+                )}
+              </div>
+              
               <Form {...redisForm}>
                 <form id="redis-form" onSubmit={redisForm.handleSubmit(onRedisSubmit)} className="space-y-4">
                   <FormField
