@@ -94,7 +94,7 @@ export default function TradeHistory({ sessionId, configHash }: TradeHistoryProp
                   ? "text-sm text-emerald-600 font-medium" 
                   : "text-sm text-red-600 font-medium"
                 }>
-                  {trade.realizedPnl >= 0 ? '+' : ''}{trade.realizedPnl.toFixed(1)}%
+                  {trade.realizedPnl >= 0 ? '+' : ''}{trade.realizedPnl.toFixed(2)} USDT
                 </TableCell>
               </TableRow>
             ))

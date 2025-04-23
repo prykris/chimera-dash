@@ -41,14 +41,16 @@ export default function EquityCurve({ sessionId, configHash, trades: propTrades 
     }
     
     // Sort trades by entry time
-    const sortedTrades = [...trades].sort((a, b) => a.entryTime - b.entryTime);
+    const sortedTrades = [...trades].sort((a, b) => a.entryTimestamp - b.entryTimestamp);
     
     // Calculate running equity for each trade
-    const equity = [100]; // Start with 100% equity
+    const initialEquity = 1000; // Start with 1000 USDT equity
+    const equity = [initialEquity]; 
     
     sortedTrades.forEach(trade => {
       const lastEquity = equity[equity.length - 1];
-      const newEquity = lastEquity * (1 + trade.profitLoss / 100);
+      // Use realizedPnl directly as it's already in USDT
+      const newEquity = lastEquity + trade.realizedPnl;
       equity.push(newEquity);
     });
     
@@ -84,17 +86,17 @@ export default function EquityCurve({ sessionId, configHash, trades: propTrades 
                   const index = context.dataIndex;
                   
                   if (index === 0) {
-                    return `Starting equity: 100%`;
+                    return `Starting equity: ${initialEquity.toFixed(2)} USDT`;
                   }
                   
                   const trade = sortedTrades[index - 1];
-                  const pl = trade.profitLoss >= 0 ? `+${trade.profitLoss.toFixed(2)}%` : `${trade.profitLoss.toFixed(2)}%`;
+                  const pl = trade.realizedPnl >= 0 ? `+${trade.realizedPnl.toFixed(2)} USDT` : `${trade.realizedPnl.toFixed(2)} USDT`;
                   
                   return [
                     `Trade #${index}`,
-                    `Type: ${trade.type}`,
+                    `Type: ${trade.type || (trade.entrySize > 0 ? 'LONG' : 'SHORT')}`,
                     `P&L: ${pl}`,
-                    `Current Equity: ${context.parsed.y.toFixed(2)}%`
+                    `Current Equity: ${context.parsed.y.toFixed(2)} USDT`
                   ];
                 }
               }
@@ -104,7 +106,7 @@ export default function EquityCurve({ sessionId, configHash, trades: propTrades 
             y: {
               title: {
                 display: true,
-                text: 'Equity %'
+                text: 'Equity (USDT)'
               }
             },
             x: {

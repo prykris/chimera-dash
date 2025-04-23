@@ -88,7 +88,7 @@ export default function PerformanceCharts() {
                 beginAtZero: true,
                 title: {
                   display: true,
-                  text: 'Profit %'
+                  text: 'Profit (USDT)'
                 }
               }
             }
@@ -140,7 +140,7 @@ export default function PerformanceCharts() {
             Top Performing Bots
           </CardTitle>
           <CardDescription className="mt-1 max-w-2xl text-sm text-gray-500">
-            Based on profit percentage across all sessions
+            Based on profit value (USDT) across all sessions
           </CardDescription>
         </CardHeader>
         <CardContent className="p-4">

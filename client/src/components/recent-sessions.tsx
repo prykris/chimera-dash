@@ -169,7 +169,7 @@ export default function RecentSessions() {
         </TableCell>
         <TableCell>{session.runCount.toLocaleString()}</TableCell>
         <TableCell className={session.bestProfit >= 0 ? "text-emerald-600 font-medium" : "text-red-600 font-medium"}>
-          {session.bestProfit >= 0 ? '+' : ''}{session.bestProfit.toFixed(1)}%
+          {session.bestProfit >= 0 ? '+' : ''}{session.bestProfit.toFixed(2)} USDT
         </TableCell>
         <TableCell>
           {renderSessionStatus(session)}

@@ -102,7 +102,7 @@ export default function SessionDetail() {
             ) : (
               <p className={`mt-1 text-lg font-semibold ${session?.bestProfit && session.bestProfit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
                 {session?.bestProfit && session.bestProfit >= 0 ? '+' : ''}
-                {session?.bestProfit?.toFixed(1)}%
+                {session?.bestProfit?.toFixed(2)} USDT
               </p>
             )}
           </CardContent>

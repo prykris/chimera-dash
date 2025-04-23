@@ -137,7 +137,7 @@ export default function BotDetail() {
                 : 'text-red-600'
                 }`}>
                 {(botRun?.resultsMetadata?.performance?.profit || 0) >= 0 ? '+' : ''}
-                {botRun?.resultsMetadata?.performance?.profit?.toFixed(1) || '0.0'}%
+                {botRun?.resultsMetadata?.performance?.profit?.toFixed(2) || '0.00'} USDT
               </p>
             )}
           </CardContent>

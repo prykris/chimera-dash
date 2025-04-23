@@ -101,7 +101,7 @@ export default function BotRunsTable({
                   {getBotStatusBadge(bot.status)}
                 </TableCell>
                 <TableCell className={bot.profit >= 0 ? "text-emerald-600 font-medium" : "text-red-600 font-medium"}>
-                  {bot.profit >= 0 ? '+' : ''}{bot.profit.toFixed(1)}%
+                  {bot.profit >= 0 ? '+' : ''}{bot.profit.toFixed(2)} USDT
                 </TableCell>
                 <TableCell className="text-gray-500">
                   {formatLastUpdated(bot.lastUpdated)}
