@@ -9,8 +9,12 @@ class RedisClient {
   private maxRetries: number = 1; // Only try once during startup
 
   constructor() {
+    // For Replit environment we need to force localhost without protected mode
+    const redisUrl = 'redis://localhost:6379';
+    console.log(`Connecting to Redis at: ${redisUrl}`); // Show the connection URL
+    
     this.client = createClient({
-      url: process.env.REDIS_URL || 'redis://localhost:6379',
+      url: redisUrl,
       socket: {
         reconnectStrategy: (retries) => {
           if (retries >= this.maxRetries) {
