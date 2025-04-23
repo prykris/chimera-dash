@@ -53,10 +53,16 @@ export type BacktestRunRecord = {
       sharpe?: number;
       maxDrawdown?: number;
       winRate?: number;
+      numTrades?: number;
+      trades?: Trade[];
+      profitFactor?: number;
+      avgTradeDuration?: number;
+      // Add any other fields you store in performance
     };
     marketHistory?: {
       fills: any[];
       orders: any[];
+      trades?: Trade[];
     };
   };
   configuration?: BotConfiguration;
@@ -127,9 +133,8 @@ export function formatBotRunId(sessionId: string, configHash: string): string {
 // Redis key patterns
 export const REDIS_KEYS = {
   SESSION: 'bot_registry:session_current',
-  BOT_RUN: 'bot_registry:run',
-  TRADES: 'bot_registry:trades',
-  SESSION_BOTS_SET: 'session' // will be appended with :bots
+  BOT_RUN: 'bot_registry:run:v1:context',
+  TRADES: 'bot_performance:trades:v1:context',
 };
 
 // Format Redis keys for various entities
@@ -138,13 +143,13 @@ export function formatSessionKey(sessionId: string): string {
 }
 
 export function formatBotRunKey(sessionId: string, configHash: string): string {
-  return `${REDIS_KEYS.BOT_RUN}:${sessionId}:${configHash}`;
+  return `${REDIS_KEYS.BOT_RUN}:${sessionId}:config:${configHash}`;
 }
 
 export function formatTradesKey(sessionId: string, configHash: string): string {
-  return `${REDIS_KEYS.TRADES}:${sessionId}:${configHash}`;
+  return `${REDIS_KEYS.TRADES}:${sessionId}:config:${configHash}:trades`;
 }
 
 export function formatSessionBotsSetKey(sessionId: string): string {
-  return `${REDIS_KEYS.SESSION_BOTS_SET}:${sessionId}:bots`;
+  return `${REDIS_KEYS.BOT_RUN}:${sessionId}:config`;
 }

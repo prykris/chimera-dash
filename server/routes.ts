@@ -29,6 +29,8 @@ export async function registerRoutes(app: Express): Promise<void> {
       const sessionId = req.params.sessionId;
       const session = await storage.getSession(sessionId);
 
+      console.log({ session, sessionId })
+
       if (!session) {
         return res.status(404).json({ error: 'Session not found' });
       }
@@ -66,6 +68,19 @@ export async function registerRoutes(app: Express): Promise<void> {
     }
   });
 
+  app.get("/api/sessions/:sessionId/bots/aggregate", async (req: Request, res: Response) => {
+    try {
+      const sessionId = req.params.sessionId;
+
+      const aggregateStats = await storage.getSessionAggregateStats(sessionId);
+
+      res.json(aggregateStats);
+    } catch (error) {
+      console.error(`Error fetching aggregate stats for session ${req.params.sessionId}:`, error);
+      res.status(500).json({ error: 'Failed to fetch aggregate stats for session' });
+    }
+  });
+
   app.get("/api/sessions/:sessionId/bots/:configHash", async (req: Request, res: Response) => {
     try {
       const { sessionId, configHash } = req.params;
@@ -73,6 +88,7 @@ export async function registerRoutes(app: Express): Promise<void> {
       const botRun = await storage.getBotRun(sessionId, configHash);
 
       if (!botRun) {
+        console.log("Bot run not found:", sessionId, configHash, botRun);
         return res.status(404).json({ error: 'Bot run not found' });
       }
 
@@ -93,19 +109,6 @@ export async function registerRoutes(app: Express): Promise<void> {
     } catch (error) {
       console.error(`Error fetching trades for bot ${req.params.sessionId}/${req.params.configHash}:`, error);
       res.status(500).json({ error: 'Failed to fetch trades for bot run' });
-    }
-  });
-
-  app.get("/api/sessions/:sessionId/bots/aggregate", async (req: Request, res: Response) => {
-    try {
-      const sessionId = req.params.sessionId;
-
-      const aggregateStats = await storage.getSessionAggregateStats(sessionId);
-
-      res.json(aggregateStats);
-    } catch (error) {
-      console.error(`Error fetching aggregate stats for session ${req.params.sessionId}:`, error);
-      res.status(500).json({ error: 'Failed to fetch aggregate stats for session' });
     }
   });
 
@@ -159,28 +162,28 @@ export async function registerRoutes(app: Express): Promise<void> {
   app.get("/api/market/klines", async (req: Request, res: Response) => {
     try {
       const { symbol, interval, limit } = req.query;
-      
+
       // Validate params
       if (!symbol) {
         return res.status(400).json({ error: "Symbol parameter is required" });
       }
-      
+
       // Default values
       const queryInterval = interval || '1d';
       const queryLimit = limit || '30';
-      
+
       // Build the URL for Binance API (public API)
       const binanceUrl = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${queryInterval}&limit=${queryLimit}`;
-      
+
       // Fetch data from Binance
       const response = await fetch(binanceUrl);
-      
+
       if (!response.ok) {
         throw new Error(`Failed to fetch market data: ${response.statusText}`);
       }
-      
+
       const rawData = await response.json();
-      
+
       // Transform the data to a friendlier format for our frontend
       const transformedData = rawData.map((kline: any) => ({
         date: new Date(kline[0]).toISOString().split('T')[0], // Open time
@@ -190,7 +193,7 @@ export async function registerRoutes(app: Express): Promise<void> {
         low: parseFloat(kline[3]),
         open: parseFloat(kline[1]),
       }));
-      
+
       res.json(transformedData);
     } catch (error) {
       console.error("Error fetching market data:", error);

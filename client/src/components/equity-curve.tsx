@@ -8,16 +8,19 @@ import { Trade } from "@shared/schema";
 type EquityCurveProps = {
   sessionId: string;
   configHash: string;
+  trades?: Trade[];
 };
 
-export default function EquityCurve({ sessionId, configHash }: EquityCurveProps) {
+export default function EquityCurve({ sessionId, configHash, trades: propTrades }: EquityCurveProps) {
   const chartRef = useRef<HTMLCanvasElement>(null);
   const chartInstance = useRef<Chart | null>(null);
   
-  // Fetch trades for this bot run
-  const { data: trades, isLoading } = useQuery({
+  // Fetch trades for this bot run if not provided as prop
+  const { data: apiTrades, isLoading } = useQuery({
     queryKey: [`/api/sessions/${sessionId}/bots/${configHash}/trades`],
+    enabled: !propTrades,
   });
+  const trades = Array.isArray(propTrades) ? propTrades : Array.isArray(apiTrades) ? apiTrades : [];
   
   // Cleanup chart on unmount
   useEffect(() => {
@@ -30,7 +33,7 @@ export default function EquityCurve({ sessionId, configHash }: EquityCurveProps)
   
   // Build and render the equity curve when trades data changes
   useEffect(() => {
-    if (!trades || isLoading || !chartRef.current) return;
+    if (trades.length === 0 || (propTrades === undefined && isLoading) || !chartRef.current) return;
     
     // Clean up previous chart
     if (chartInstance.current) {

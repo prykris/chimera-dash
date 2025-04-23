@@ -15,7 +15,7 @@ export default function BotDetail() {
   const { sessionId, configHash } = useParams<{ sessionId: string, configHash: string }>();
   const [isCopied, setIsCopied] = useState(false);
   const { toast } = useToast();
-  
+
   if (!sessionId || !configHash) {
     return (
       <div className="text-center py-12">
@@ -24,9 +24,9 @@ export default function BotDetail() {
       </div>
     );
   }
-  
+
   const { botRun, isLoadingBotRun, trades, isLoadingTrades } = useBotData(sessionId, configHash);
-  
+
   const getBotStatusBadge = (status?: string) => {
     switch (status) {
       case 'completed':
@@ -39,15 +39,15 @@ export default function BotDetail() {
         return <Badge variant="outline" className="bg-gray-100 text-gray-800">Unknown</Badge>;
     }
   };
-  
+
   const formatTimestamp = (timestamp?: number) => {
     if (!timestamp) return '';
     return format(timestamp, 'MMMM d, yyyy \'at\' HH:mm');
   };
-  
+
   const handleCopyConfig = () => {
     if (!botRun) return;
-    
+
     navigator.clipboard.writeText(JSON.stringify(botRun.configuration, null, 2))
       .then(() => {
         setIsCopied(true);
@@ -55,7 +55,7 @@ export default function BotDetail() {
           title: "Configuration copied",
           description: "Bot configuration has been copied to clipboard",
         });
-        
+
         setTimeout(() => setIsCopied(false), 2000);
       })
       .catch(err => {
@@ -66,7 +66,29 @@ export default function BotDetail() {
         });
       });
   };
-  
+
+  const perfTrades = botRun?.resultsMetadata?.performance?.trades ?? [];
+  let profitFactor = '-';
+  let avgTradeDuration = '-';
+
+  if (perfTrades.length > 0) {
+    let grossProfit = 0;
+    let grossLoss = 0;
+    let totalDuration = 0;
+
+    perfTrades.forEach(trade => {
+      const pnl = trade.realizedPnl ?? 0;
+      if (pnl > 0) grossProfit += pnl;
+      if (pnl < 0) grossLoss += Math.abs(pnl);
+      if (trade.entryTimestamp && trade.exitTimestamp) {
+        totalDuration += (trade.exitTimestamp - trade.entryTimestamp);
+      }
+    });
+
+    profitFactor = grossLoss > 0 ? (grossProfit / grossLoss).toFixed(2) : (grossProfit > 0 ? '∞' : '-');
+    avgTradeDuration = (totalDuration / perfTrades.length / 1000 / 60).toFixed(2) + ' min';
+  }
+
   return (
     <>
       <div className="mb-8 flex justify-between items-center">
@@ -79,7 +101,7 @@ export default function BotDetail() {
             )}
           </h1>
           <p className="mt-1 text-sm text-gray-500">
-            <span 
+            <span
               className="text-primary-600 hover:text-primary-800 cursor-pointer"
               onClick={() => window.location.href = `/sessions/${sessionId}`}
             >
@@ -88,7 +110,7 @@ export default function BotDetail() {
           </p>
         </div>
       </div>
-      
+
       {/* Overview Cards */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
         <Card className="bg-gray-50 p-4 rounded-lg">
@@ -103,25 +125,24 @@ export default function BotDetail() {
             </p>
           </CardContent>
         </Card>
-        
+
         <Card className="bg-gray-50 p-4 rounded-lg">
           <CardContent className="p-0">
             <h3 className="text-sm font-medium text-gray-500">Profit</h3>
             {isLoadingBotRun ? (
               <Skeleton className="h-6 w-16 mt-1" />
             ) : (
-              <p className={`mt-1 text-lg font-semibold ${
-                (botRun?.resultsMetadata?.performance?.profit || 0) >= 0 
-                  ? 'text-emerald-600' 
-                  : 'text-red-600'
-              }`}>
+              <p className={`mt-1 text-lg font-semibold ${(botRun?.resultsMetadata?.performance?.profit || 0) >= 0
+                ? 'text-emerald-600'
+                : 'text-red-600'
+                }`}>
                 {(botRun?.resultsMetadata?.performance?.profit || 0) >= 0 ? '+' : ''}
                 {botRun?.resultsMetadata?.performance?.profit?.toFixed(1) || '0.0'}%
               </p>
             )}
           </CardContent>
         </Card>
-        
+
         <Card className="bg-gray-50 p-4 rounded-lg">
           <CardContent className="p-0">
             <h3 className="text-sm font-medium text-gray-500">Last Updated</h3>
@@ -135,7 +156,7 @@ export default function BotDetail() {
           </CardContent>
         </Card>
       </div>
-      
+
       {/* Performance Metrics */}
       <Card className="bg-white border border-gray-200 rounded-lg overflow-hidden mb-6">
         <CardHeader className="px-4 py-5 sm:px-6 border-b border-gray-200">
@@ -151,72 +172,72 @@ export default function BotDetail() {
                 <Skeleton className="h-5 w-12 mt-1" />
               ) : (
                 <dd className="mt-1 text-sm text-gray-900">
-                  {botRun?.resultsMetadata?.performance?.tradeCount || 0}
+                  {botRun?.resultsMetadata?.performance?.numTrades ?? perfTrades.length ?? 0}
                 </dd>
               )}
             </div>
-            
+
             <div className="sm:col-span-2">
               <dt className="text-sm font-medium text-gray-500">Win Rate</dt>
               {isLoadingBotRun ? (
                 <Skeleton className="h-5 w-16 mt-1" />
               ) : (
                 <dd className="mt-1 text-sm text-gray-900">
-                  {botRun?.resultsMetadata?.performance?.winRate?.toFixed(1) || '0.0'}%
+                  {botRun?.resultsMetadata?.performance?.winRate?.toFixed(1) ?? '0.0'}%
                 </dd>
               )}
             </div>
-            
+
             <div className="sm:col-span-2">
               <dt className="text-sm font-medium text-gray-500">Profit Factor</dt>
               {isLoadingBotRun ? (
                 <Skeleton className="h-5 w-12 mt-1" />
               ) : (
                 <dd className="mt-1 text-sm text-gray-900">
-                  {botRun?.resultsMetadata?.performance?.profitFactor?.toFixed(1) || '-'}
+                  {botRun?.resultsMetadata?.performance?.profitFactor !== undefined ? botRun.resultsMetadata.performance.profitFactor.toFixed(1) : profitFactor}
                 </dd>
               )}
             </div>
-            
+
             <div className="sm:col-span-2">
               <dt className="text-sm font-medium text-gray-500">Max Drawdown</dt>
               {isLoadingBotRun ? (
                 <Skeleton className="h-5 w-14 mt-1" />
               ) : (
                 <dd className="mt-1 text-sm text-gray-900">
-                  {botRun?.resultsMetadata?.performance?.maxDrawdown?.toFixed(1) || '-'}%
+                  {botRun?.resultsMetadata?.performance?.maxDrawdown !== undefined ? (botRun.resultsMetadata.performance.maxDrawdown * 100).toFixed(2) : '-'}%
                 </dd>
               )}
             </div>
-            
+
             <div className="sm:col-span-2">
               <dt className="text-sm font-medium text-gray-500">Avg Trade Duration</dt>
               {isLoadingBotRun ? (
                 <Skeleton className="h-5 w-20 mt-1" />
               ) : (
                 <dd className="mt-1 text-sm text-gray-900">
-                  {botRun?.resultsMetadata?.performance?.avgTradeDuration || '-'}
+                  {botRun?.resultsMetadata?.performance?.avgTradeDuration ?? avgTradeDuration}
                 </dd>
               )}
             </div>
-            
+
             <div className="sm:col-span-2">
               <dt className="text-sm font-medium text-gray-500">Sharpe Ratio</dt>
               {isLoadingBotRun ? (
                 <Skeleton className="h-5 w-12 mt-1" />
               ) : (
                 <dd className="mt-1 text-sm text-gray-900">
-                  {botRun?.resultsMetadata?.performance?.sharpe?.toFixed(1) || '-'}
+                  {botRun?.resultsMetadata?.performance?.sharpe !== undefined ? botRun.resultsMetadata.performance.sharpe.toFixed(1) : '-'}
                 </dd>
               )}
             </div>
           </div>
         </CardContent>
       </Card>
-      
+
       {/* Equity Curve Chart */}
-      <EquityCurve sessionId={sessionId} configHash={configHash} />
-      
+      <EquityCurve sessionId={sessionId} configHash={configHash} trades={trades} />
+
       {/* Bot Configuration */}
       <Card className="bg-white border border-gray-200 rounded-lg overflow-hidden mb-6">
         <CardHeader className="px-4 py-5 sm:px-6 border-b border-gray-200 flex justify-between items-center">
@@ -245,7 +266,7 @@ export default function BotDetail() {
           )}
         </CardContent>
       </Card>
-      
+
       {/* Trade History */}
       <Card className="bg-white border border-gray-200 rounded-lg overflow-hidden">
         <CardHeader className="px-4 py-5 sm:px-6 border-b border-gray-200">

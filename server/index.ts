@@ -7,7 +7,7 @@ import http from 'http';
 async function start() {
   const app = express();
   // Force port 5000 for Replit compatibility
-  const PORT = 5000;
+  const PORT = Number(process.env.PORT) || 5000;
 
   // Add basic middleware
   app.use(express.json());

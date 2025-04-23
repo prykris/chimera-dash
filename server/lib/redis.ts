@@ -12,7 +12,7 @@ class RedisClient {
     // For Replit environment we need to force localhost without protected mode
     const redisUrl = 'redis://localhost:6379';
     console.log(`Connecting to Redis at: ${redisUrl}`); // Show the connection URL
-    
+
     this.client = createClient({
       url: redisUrl,
       socket: {
@@ -93,6 +93,7 @@ class RedisClient {
       }
 
       const key = formatSessionKey(sessionId);
+      console.log("Redis sessionkey:", key);
       const data = await this.client.get(key);
 
       if (!data) {
@@ -169,46 +170,27 @@ class RedisClient {
       }
 
       const { status, minProfit, maxProfit, cursor = '0', limit = 50 } = options;
-      const setKey = formatSessionBotsSetKey(sessionId);
-
-      // Get hashes from the session's bot set using SSCAN
-      let configHashes: string[] = [];
+      // Use SCAN to find all config keys for this session
+      const pattern = `${formatSessionBotsSetKey(sessionId)}:*`;
+      let scanCursor = Number(cursor);
+      let keys: string[] = [];
       let nextCursor = '0';
-
-      try {
-        // Use a try-catch specifically for this operation
-        const result = await this.client.sScan(setKey, Number(cursor), { COUNT: limit });
-        nextCursor = String(result.cursor);
-        configHashes = result.members;
-      } catch (err) {
-        console.error(`Error scanning set ${setKey}:`, err);
-        return { bots: [], nextCursor: '0' };
-      }
+      // Only scan once per call for pagination
+      const result = await this.client.scan(scanCursor, { MATCH: pattern, COUNT: limit });
+      nextCursor = String(result.cursor);
+      keys = result.keys;
 
       const bots = [];
-
-      // Get details for each bot
-      for (const configHash of configHashes) {
-        const botRunKey = formatBotRunKey(sessionId, configHash);
-        const data = await this.client.get(botRunKey);
-
+      for (const key of keys) {
+        // Extract configHash from key
+        const parts = key.split(":");
+        const configHash = parts[parts.length - 1];
+        const data = await this.client.get(key);
         if (data) {
           const botRun = JSON.parse(data) as BacktestRunRecord;
           const profit = botRun.resultsMetadata?.performance?.profit ?? 0;
-
-          // Filter by status if specified
-          if (status && botRun.status !== status) {
-            continue;
-          }
-
-          // Filter by profit range if specified
-          if (
-            (minProfit !== undefined && profit < minProfit) ||
-            (maxProfit !== undefined && profit > maxProfit)
-          ) {
-            continue;
-          }
-
+          if (status && botRun.status !== status) continue;
+          if ((minProfit !== undefined && profit < minProfit) || (maxProfit !== undefined && profit > maxProfit)) continue;
           bots.push({
             configHash,
             status: botRun.status,
@@ -218,11 +200,7 @@ class RedisClient {
           });
         }
       }
-
-      return {
-        bots,
-        nextCursor: String(nextCursor)
-      };
+      return { bots, nextCursor };
     } catch (error) {
       console.error(`Error getting bot runs for session ${sessionId}:`, error);
       return { bots: [], nextCursor: '0' };
@@ -273,7 +251,7 @@ class RedisClient {
         };
       }
 
-      const setKey = formatSessionBotsSetKey(sessionId);
+      const setKey = formatSessionBotsSetKey(sessionId) + ':*';
       const configHashes = await this.client.sMembers(setKey);
 
       if (configHashes.length === 0) {

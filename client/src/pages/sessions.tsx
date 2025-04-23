@@ -5,13 +5,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
 import { format, formatDistanceToNow } from "date-fns";
-import { 
-  Pagination, 
-  PaginationContent, 
-  PaginationItem, 
-  PaginationLink, 
-  PaginationNext, 
-  PaginationPrevious 
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious
 } from "@/components/ui/pagination";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -20,65 +20,65 @@ import { SessionSummary, formatSessionId } from "@shared/schema";
 export default function Sessions() {
   const [page, setPage] = useState(1);
   const pageSize = 10;
-  
+
   const { sessions, isLoadingSessions, sessionsError } = useSessionData();
-  
+
   // Sort sessions by last update (most recent first)
-  const sortedSessions = sessions 
-    ? [...sessions].sort((a, b) => b.lastUpdate - a.lastUpdate) 
+  const sortedSessions = sessions
+    ? [...sessions].sort((a, b) => b.lastUpdate - a.lastUpdate)
     : [];
-    
+
   const paginatedSessions = sortedSessions.slice(
     (page - 1) * pageSize,
     page * pageSize
   );
-  
+
   const totalPages = Math.ceil((sortedSessions.length || 0) / pageSize);
-  
+
   const formatTimeRange = (startTime: number, endTime: number): string => {
     return `${format(startTime, 'MMM d, yyyy')} - ${format(endTime, 'MMM d, yyyy')}`;
   };
-  
+
   const formatLastUpdate = (timestamp: number): string => {
     return formatDistanceToNow(timestamp, { addSuffix: true });
   };
-  
+
   const renderSessionStatus = (session: SessionSummary) => {
     if (session.active && session.currentStatus === 'running') {
       return <Badge variant="outline" className="bg-yellow-100 text-yellow-800">Running</Badge>;
     }
-    
+
     if (session.active) {
       return <Badge variant="outline" className="bg-green-100 text-green-800">Active</Badge>;
     }
-    
+
     if (session.errorCount > 0 && session.errorCount / session.runCount > 0.5) {
       return <Badge variant="outline" className="bg-red-100 text-red-800">Failed</Badge>;
     }
-    
+
     return <Badge variant="outline" className="bg-gray-100 text-gray-800">Completed</Badge>;
   };
-  
+
   const renderPagination = () => {
     if (totalPages <= 1) return null;
-    
+
     return (
       <Pagination>
         <PaginationContent>
           <PaginationItem>
-            <PaginationPrevious 
+            <PaginationPrevious
               onClick={() => setPage(p => Math.max(1, p - 1))}
               disabled={page === 1}
             />
           </PaginationItem>
-          
+
           {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-            const pageNum = page <= 3 
-              ? i + 1 
+            const pageNum = page <= 3
+              ? i + 1
               : page + i - 2;
-              
+
             if (pageNum > totalPages) return null;
-            
+
             return (
               <PaginationItem key={pageNum}>
                 <PaginationLink
@@ -90,9 +90,9 @@ export default function Sessions() {
               </PaginationItem>
             );
           })}
-          
+
           <PaginationItem>
-            <PaginationNext 
+            <PaginationNext
               onClick={() => setPage(p => Math.min(totalPages, p + 1))}
               disabled={page === totalPages}
             />
@@ -101,7 +101,7 @@ export default function Sessions() {
       </Pagination>
     );
   };
-  
+
   return (
     <>
       <div className="mb-8 flex justify-between items-center">
@@ -113,14 +113,14 @@ export default function Sessions() {
           New Session
         </Button>
       </div>
-      
+
       <Card className="bg-white shadow rounded-lg">
         <CardHeader className="px-4 py-5 sm:px-6 border-b border-gray-200">
           <CardTitle className="text-lg leading-6 font-medium text-gray-900">
             Backtest Sessions
           </CardTitle>
         </CardHeader>
-        
+
         <div className="overflow-x-auto">
           <Table>
             <TableHeader className="bg-gray-50">
@@ -156,14 +156,14 @@ export default function Sessions() {
                 // Session rows
                 paginatedSessions.map(session => {
                   const sessionId = formatSessionId(
-                    session.symbol,
+                    session.symbol.replace("/", "_"),
                     session.timeframe,
                     session.startTimestamp,
                     session.endTimestamp
                   );
-                  
+
                   return (
-                    <TableRow 
+                    <TableRow
                       key={sessionId}
                       className="hover:bg-gray-50 cursor-pointer"
                       onClick={() => window.location.href = `/sessions/${sessionId}`}
@@ -206,7 +206,7 @@ export default function Sessions() {
             </TableBody>
           </Table>
         </div>
-        
+
         {/* Pagination */}
         <CardContent className="bg-gray-50 px-4 py-3 border-t border-gray-200">
           <div className="flex items-center justify-between">
