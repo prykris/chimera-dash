@@ -9,7 +9,7 @@ import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, For
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
-import { Database, ServerCog, Bell, Shield, User } from "lucide-react";
+import { Database, ServerCog, Bell, Shield } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 const redisFormSchema = z.object({
@@ -100,10 +100,6 @@ export default function Settings() {
           <TabsTrigger value="security" className="flex items-center gap-2">
             <Shield className="h-4 w-4" />
             <span>Security</span>
-          </TabsTrigger>
-          <TabsTrigger value="account" className="flex items-center gap-2">
-            <User className="h-4 w-4" />
-            <span>Account</span>
           </TabsTrigger>
         </TabsList>
         
@@ -319,22 +315,6 @@ export default function Settings() {
               <CardTitle>Security Settings</CardTitle>
               <CardDescription>
                 Manage security settings and access controls
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-8">
-              <div className="text-muted-foreground text-center py-8">
-                This feature is under development
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-        
-        <TabsContent value="account" className="space-y-4 mt-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Account Settings</CardTitle>
-              <CardDescription>
-                Manage your account preferences and profile
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-8">
