@@ -1,0 +1,515 @@
+/**
+ * Direct Backtest Script
+ * 
+ * Bypasses Backtester and BacktestEngine for a less abstract execution flow.
+ * Sets up components and runs the simulation loop directly.
+ */
+
+import { BaseScript } from '../../../core/src/scripts/BaseScript.js';
+import {
+    ScriptCategory,
+    ScriptExecutionContext,
+    ScriptExecutionResult,
+    ScriptInputDefinition,
+    ScriptInputType,
+    ScriptMetadata
+} from '../../../core/src/scripts/types.js';
+import { CommonInputs } from '../../../core/src/scripts/commonInputs.js';
+import { ScriptConfig, ScriptType } from '../../../core/src/scripts/ScriptFactory.js';
+import { LogContext } from '../../../core/src/utils/logging/index.js';
+import { Exchange, OHLCV } from 'ccxt';
+import { getExchangeCredentials } from '../../../core/src/utils/env.js';
+import { ExchangeFactory } from '../../../core/src/factory/ExchangeFactory.js';
+import { createSyncedExchange } from '../../../core/src/utils/ExchangeProxy.js';
+import { fetchExactHistoricalCandles } from '../utils/historicalDataFetcher.js';
+
+// --- Backtesting Core ---
+import { IndicatorManagerPrecomputedAdapter } from '../backtesting/indicators/IndicatorManagerPrecomputedAdapter.js';
+import { createMarket, SimplePriceProvider } from '../simulation/Market.js';
+import { BotFactory } from '../core/BotFactory.js';
+import { BotFingerprinter } from '../core/BotFingerprinter.js';
+import { BotRegistry } from '../core/BotRegistry.js';
+import { RedisRegistryDriver } from '../core/RedisBotRegistryDriver.js';
+import { TradingBot } from '../core/TradingBot.js';
+import { FillEvent } from '../simulation/Market.js';
+import { BotConfiguration } from '../core/types.js';
+import { PerformanceRegistry } from '../core/PerformanceRegistry.js';
+import { SessionRegistry, SessionSummary, SessionStatus } from '../core/SessionRegistry.js';
+
+// Constants - Can be made configurable via inputs later
+const INDICATOR_WARMUP_PERIOD = 200; // TODO: Make configurable?
+
+// --- Add Trade interface at the top (after imports) ---
+export interface Trade {
+    entryTimestamp: number;
+    entryPrice: number;
+    entrySize: number;
+    exitTimestamp: number;
+    exitPrice: number;
+    exitSize: number;
+    realizedPnl: number;
+}
+
+// Helper sleep function
+function sleep(ms: number) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Script implementation class
+ */
+class DirectBacktestScriptImpl extends BaseScript {
+    private fillHistory: any[] = [];
+    private trades: Trade[] = [];
+    constructor(metadata: ScriptMetadata) {
+        super(metadata);
+        // Ensure logger context is specific to this script
+        this.logger = LogContext.createLogger(metadata.id);
+    }
+
+    /**
+     * Define inputs for the script
+     */
+    protected configureInputs(): Record<string, ScriptInputDefinition> {
+        return {
+            exchange: CommonInputs.EXCHANGE,
+            symbol: CommonInputs.SYMBOL,
+            timeframe: CommonInputs.TIMEFRAME,
+            candleLimit: {
+                name: 'candleLimit',
+                description: 'Number of historical candles to fetch.',
+                type: ScriptInputType.NUMBER,
+                required: false,
+                defaultValue: 500,
+            },
+            initialBalance: CommonInputs.INITIAL_BALANCE,
+            feeCommissions: CommonInputs.FEES_COMMISSIONS,
+        };
+    }
+
+    // --- Performance computation helper ---
+    private computePerformance(trades: Trade[], initialBalance: number, finalQuoteBalance: number, openPosition?: { entryPrice: number, entryTimestamp: number, size: number, currentPrice: number, currentTimestamp: number }) {
+        let equity = finalQuoteBalance;
+        let peak = initialBalance;
+        let maxDrawdown = 0;
+        let wins = 0, losses = 0;
+        let returns: number[] = [];
+        let numTrades = trades.length;
+        let totalProfit = 0;
+
+        for (const trade of trades) {
+            totalProfit += trade.realizedPnl;
+            returns.push(trade.realizedPnl / (trade.entrySize * trade.entryPrice || 1));
+            if (trade.realizedPnl > 0) wins++; else losses++;
+            equity += trade.realizedPnl;
+            if (equity > peak) peak = equity;
+            const drawdown = (peak - equity) / (peak || 1);
+            if (drawdown > maxDrawdown) maxDrawdown = drawdown;
+        }
+        // If there's an open position, count unrealized PnL as a 'virtual' trade
+        if (openPosition && openPosition.size !== 0) {
+            const unrealizedPnl = (openPosition.currentPrice - openPosition.entryPrice) * openPosition.size;
+            returns.push(unrealizedPnl / (openPosition.size * openPosition.entryPrice || 1));
+            equity += unrealizedPnl;
+            // Don't increment numTrades, wins, losses
+        }
+        // Sharpe ratio (simple, not annualized)
+        const mean = returns.length ? returns.reduce((a, b) => a + b, 0) / returns.length : 0;
+        const std = returns.length ? Math.sqrt(returns.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / returns.length) : 0;
+        const sharpe = std > 0 ? mean / std : 0;
+        const winRate = numTrades > 0 ? wins / numTrades : 0;
+        return {
+            profit: equity - initialBalance,
+            sharpe,
+            maxDrawdown,
+            winRate,
+            numTrades,
+            trades,
+        };
+    }
+
+    /**
+     * Execute the script
+     */
+    protected async executeScript(context: ScriptExecutionContext): Promise<Partial<ScriptExecutionResult>> {
+        const startTime = Date.now();
+        this.logger.info('Starting direct backtest execution...');
+        const { inputs } = context;
+
+        try {
+            // --- 1. Parse Inputs & Basic Config ---
+            this.logger.info('Parsing inputs and preparing configuration...');
+            const symbol = inputs.symbol as string;
+            const timeframe = inputs.timeframe as string;
+            const initialBalance = inputs.initialBalance as number;
+            const exchangeId = inputs.exchange as string;
+            const candleLimit = typeof inputs.candleLimit === 'number' ? inputs.candleLimit : 500;
+            const testnet = false;
+
+            // --- Directly Create Exchange ---
+            this.logger.debug(`Creating exchange instance for ${exchangeId} (${testnet ? 'Testnet' : 'Mainnet'})...`);
+            let exchange: Exchange;
+            try {
+                const credentials = getExchangeCredentials(exchangeId, testnet);
+                const rawExchange = ExchangeFactory.createCcxtExchange({
+                    exchangeId: exchangeId,
+                    ...credentials,
+                    useTestnet: testnet
+                });
+                exchange = await createSyncedExchange(rawExchange, { forceSyncOnStartup: true });
+                this.logger.debug(`Exchange instance created for ${exchangeId}.`);
+            } catch (error) {
+                this.logger.error(`Failed to create exchange instance for ${exchangeId}:`, error);
+                throw error;
+            }
+
+            const driver = new RedisRegistryDriver();
+            const registry = new BotRegistry(driver);
+            const sessionRegistry = new SessionRegistry(driver);
+            const performanceRegistry = new PerformanceRegistry(driver);
+
+            // --- Fetch Historical Data Directly (ONCE) ---
+            let fetchedCandles: OHLCV[];
+            try {
+                fetchedCandles = await fetchExactHistoricalCandles(
+                    exchange,
+                    symbol,
+                    timeframe,
+                    candleLimit,
+                );
+                this.logger.info(`Successfully fetched ${fetchedCandles.length} candles.`);
+                if (fetchedCandles.length !== candleLimit) {
+                    this.logger.warn(`Expected ${candleLimit} candles but received ${fetchedCandles.length}. This might happen if the requested range exceeds available history.`);
+                    if (fetchedCandles.length === 0) {
+                        throw new Error('No candle data was fetched.');
+                    }
+                }
+            } catch (error) {
+                this.logger.error('Failed to fetch historical candles:', error);
+                throw error;
+            }
+
+            // --- Precompute Indicators (ONCE) ---
+            const indicatorManager = new IndicatorManagerPrecomputedAdapter();
+            const priceProvider = new SimplePriceProvider();
+            this.logger.info('Precomputing indicators...');
+            await indicatorManager.precompute({
+                symbol,
+                timeframe,
+                candles: fetchedCandles,
+            });
+            this.logger.info('Indicator precomputation complete.');
+
+            const [candleStartTimestamp, candleEndTimestamp] = [fetchedCandles[0][0], fetchedCandles[fetchedCandles.length - 1][0]];
+
+            // --- Infinite Backtest Loop ---
+            let runCount = 0;
+            let totalProfit = 0;
+            let bestProfit = -Infinity;
+            let bestConfig: BotConfiguration | null = null;
+            let bestPerformance: any = null;
+            let stopRequested = false;
+
+            // Graceful shutdown handler
+            process.on('SIGINT', () => {
+                this.logger.info('SIGINT received. Stopping after current run...');
+                stopRequested = true;
+            });
+
+            while (!stopRequested) {
+                runCount++;
+                this.logger.info(`\n--- Starting Backtest Run #${runCount} ---`);
+                let botConfiguration: BotConfiguration;
+                let configHash: string;
+                let isUnique = false;
+                let attempts = 0;
+                // --- Find a unique bot configuration ---
+                do {
+                    botConfiguration = BotFactory.createRandomBotConfiguration(
+                        symbol,
+                        timeframe,
+                        indicatorManager.getActivePrimaryPatternIds(symbol, timeframe),
+                        indicatorManager.getAvailableTechnicalIndicatorIds()
+                    );
+                    configHash = BotFingerprinter.generateHash(botConfiguration);
+                    const ctx = { symbol, timeframe, startTimestamp: Number(candleStartTimestamp), endTimestamp: Number(candleEndTimestamp), configHash };
+                    const { status } = await registry.checkBacktestRunStatus(ctx);
+                    isUnique = (status === 'not_found');
+                    attempts++;
+                    if (!isUnique) {
+                        this.logger.warn(`Duplication prevented: ${configHash} already exists for this context (Status: ${status}). Generating a new one...`);
+                    }
+                } while ((!isUnique) && attempts < 10);
+
+                if (!isUnique) {
+                    this.logger.error('Failed to find a unique bot configuration after 10 attempts. Skipping this run...');
+                    continue;
+                }
+
+                // --- Create new market for this run ---
+                // Record the start of the run (status: running)
+                const ctx = { symbol, timeframe, startTimestamp: Number(candleStartTimestamp), endTimestamp: Number(candleEndTimestamp), configHash };
+                await registry.recordBacktestRunStart(
+                    ctx,
+                    botConfiguration.botId
+                );
+
+                let market = createMarket(
+                    symbol,
+                    initialBalance,
+                    undefined,
+                    priceProvider,
+                    {
+                        id: botConfiguration.botId,
+                        takerFeePercent: 0.001,
+                        makerFeePercent: 0.001,
+                    }
+                );
+                const Trader = new TradingBot(botConfiguration, indicatorManager, market);
+
+                // --- Setup Fill History Listener ---
+                this.fillHistory = [];
+                this.trades = [];
+                market.on('fill', (fill: FillEvent) => {
+                    this.fillHistory.push(fill);
+                });
+
+                // --- Trade tracking state ---
+                let prevPosition = { size: 0, entryPrice: 0, entryTimestamp: 0, realizedPnl: 0 };
+                let openTrade: Trade | null = null;
+
+                // --- Simulation Loop ---
+                for (let candleIndex = INDICATOR_WARMUP_PERIOD; candleIndex < fetchedCandles.length; candleIndex++) {
+                    const candle: OHLCV = fetchedCandles[candleIndex];
+                    const [timestamp, open, high, low, close, volume] = candle;
+                    const currentTimestamp = Number(timestamp);
+                    const currentClose = Number(close);
+                    const currentOpen = Number(open);
+                    const currentHigh = Number(high);
+                    const currentLow = Number(low);
+
+                    // Log CANDLE
+                    const candleLog = `[${currentTimestamp}] [${botConfiguration.botId}] [Idx=${candleIndex}] CANDLE: Close=${currentClose.toFixed(4)}, High=${currentHigh.toFixed(4)}, Low=${currentLow.toFixed(4)}, Open=${currentOpen.toFixed(4)}`;
+                    console.log(candleLog);
+
+                    indicatorManager.setCurrentIndex(symbol, timeframe, candleIndex);
+                    priceProvider.setPrice(symbol, currentClose, currentTimestamp);
+                    market.update();
+                    market.checkLimitOrderFillsAgainstPrice(currentLow, currentTimestamp, 'low');
+                    market.checkLimitOrderFillsAgainstPrice(currentHigh, currentTimestamp, 'high');
+
+                    const patternResult = indicatorManager.getLatestPatternIndicatorResult(botConfiguration.patternIndicatorId, symbol, timeframe);
+                    Trader.evaluateSignalsAndTrade(currentTimestamp, currentClose, patternResult);
+
+                    const positionEnd = market.getPosition(botConfiguration.botId);
+                    const stateLogEnd = `[${currentTimestamp}] [${botConfiguration.botId}] [Idx=${candleIndex}] STATE_END: Position=${positionEnd.size.toFixed(8)} ${symbol.split('/')[0]}, Entry=${positionEnd.entryPrice.toFixed(4)}, Bal=${positionEnd.quoteAsset}=${market.getQuoteBalance(botConfiguration.botId).toFixed(4)}, PnL(R/U)=${positionEnd.realizedPnl.toFixed(4)}/${positionEnd.unrealizedPnl.toFixed(4)}`;
+                    console.log(stateLogEnd);
+
+                    // --- Trade tracking logic ---
+                    // Detect position open/close transitions
+                    if (prevPosition.size === 0 && positionEnd.size !== 0) {
+                        // Opened a new position
+                        openTrade = {
+                            entryTimestamp: currentTimestamp,
+                            entryPrice: positionEnd.entryPrice,
+                            entrySize: positionEnd.size,
+                            exitTimestamp: 0,
+                            exitPrice: 0,
+                            exitSize: 0,
+                            realizedPnl: 0,
+                        };
+                    } else if (prevPosition.size !== 0 && positionEnd.size === 0 && openTrade) {
+                        // Closed a position
+                        openTrade.exitTimestamp = currentTimestamp;
+                        openTrade.exitPrice = currentClose;
+                        openTrade.exitSize = prevPosition.size;
+                        openTrade.realizedPnl = positionEnd.realizedPnl - (prevPosition.realizedPnl || 0);
+                        this.trades.push(openTrade);
+                        openTrade = null;
+                    }
+                    // If position is reversed (e.g., long to short), treat as close+open
+                    else if (prevPosition.size !== 0 && Math.sign(prevPosition.size) !== Math.sign(positionEnd.size)) {
+                        // Close previous
+                        if (openTrade) {
+                            openTrade.exitTimestamp = currentTimestamp;
+                            openTrade.exitPrice = currentClose;
+                            openTrade.exitSize = prevPosition.size;
+                            openTrade.realizedPnl = positionEnd.realizedPnl - (prevPosition.realizedPnl || 0);
+                            this.trades.push(openTrade);
+                        }
+                        // Open new
+                        openTrade = {
+                            entryTimestamp: currentTimestamp,
+                            entryPrice: positionEnd.entryPrice,
+                            entrySize: positionEnd.size,
+                            exitTimestamp: 0,
+                            exitPrice: 0,
+                            exitSize: 0,
+                            realizedPnl: 0,
+                        };
+                    }
+                    prevPosition = { size: positionEnd.size, entryPrice: positionEnd.entryPrice, entryTimestamp: currentTimestamp, realizedPnl: positionEnd.realizedPnl };
+                }
+
+                // --- At the end, if there's an open position, treat as virtual trade (unrealized) ---
+                const positionEndFinal = market.getPosition(botConfiguration.botId);
+                let openPosition: { entryPrice: number, entryTimestamp: number, size: number, currentPrice: number, currentTimestamp: number } | undefined = undefined;
+                if (positionEndFinal.size !== 0 && openTrade) {
+                    const lastCandle = fetchedCandles[fetchedCandles.length - 1];
+                    openTrade.exitTimestamp = Number(lastCandle[0]);
+                    openTrade.exitPrice = Number(lastCandle[4]); // last close
+                    openTrade.exitSize = positionEndFinal.size;
+                    openTrade.realizedPnl = positionEndFinal.realizedPnl - (prevPosition.realizedPnl || 0);
+                    this.trades.push(openTrade);
+                    openPosition = {
+                        entryPrice: openTrade.entryPrice,
+                        entryTimestamp: openTrade.entryTimestamp,
+                        size: openTrade.entrySize,
+                        currentPrice: openTrade.exitPrice,
+                        currentTimestamp: openTrade.exitTimestamp,
+                    };
+                }
+
+                // --- Collect performance metrics and market history ---
+                const fills = this.fillHistory;
+                const orders = market.getOrders(botConfiguration.botId);
+                const performance = this.computePerformance(this.trades, initialBalance, market.getQuoteBalance(botConfiguration.botId), openPosition);
+                const marketHistory = { fills, orders, trades: this.trades };
+                const resultsMetadata = { performance, marketHistory };
+
+                // --- Store in registry ---
+                await registry.recordBacktestRunCompletion(
+                    ctx,
+                    botConfiguration.botId,
+                    'completed',
+                    botConfiguration,
+                    resultsMetadata
+                );
+
+                // --- Store trades in PerformanceRegistry ---
+                await performanceRegistry.storeTrades(ctx, this.trades);
+
+                // --- Update SessionRegistry ---
+                const avgProfit = totalProfit / runCount;
+                const sessionSummary: SessionSummary = {
+                    symbol,
+                    timeframe,
+                    startTimestamp: Number(candleStartTimestamp),
+                    endTimestamp: Number(candleEndTimestamp),
+                    runCount,
+                    lastConfigHash: configHash,
+                    lastUpdate: Date.now(),
+                    bestProfit,
+                    bestConfigHash: bestConfig ? BotFingerprinter.generateHash(bestConfig) : configHash,
+                    currentProfit: performance.profit,
+                    currentStatus: 'running' as SessionStatus,
+                    avgProfit,
+                    errorCount: 0, // Could be incremented on run errors
+                    completedRuns: runCount,
+                    active: !stopRequested,
+                    notes: '',
+                };
+                await sessionRegistry.updateSession(ctx, sessionSummary);
+
+                // --- Track and log progress ---
+                totalProfit += performance.profit;
+                if (performance.profit > bestProfit) {
+                    bestProfit = performance.profit;
+                    bestConfig = botConfiguration;
+                    bestPerformance = performance;
+                }
+
+                this.logger.info(`Run #${runCount} complete. Profit: ${performance.profit.toFixed(2)}. Best so far: ${bestProfit.toFixed(2)}. Avg: ${(totalProfit / runCount).toFixed(2)}`);
+
+                // --- Check for pause/resume/stopped status ---
+                const sessionCtx = { symbol, timeframe, startTimestamp: Number(candleStartTimestamp), endTimestamp: Number(candleEndTimestamp) };
+                let latestSessionSummary = await sessionRegistry.fetchSession(sessionCtx);
+                while (latestSessionSummary && latestSessionSummary.currentStatus === 'paused') {
+                    this.logger.info('Session is paused. Waiting...');
+                    await sleep(2000); // Wait 2 seconds before checking again
+                    latestSessionSummary = await sessionRegistry.fetchSession(sessionCtx);
+                }
+                if (latestSessionSummary && latestSessionSummary.currentStatus === 'stopped') {
+                    this.logger.info('Session is stopped. Exiting backtest loop.');
+                    break;
+                }
+            }
+
+            this.logger.info('Backtest loop stopped. Summary:');
+            this.logger.info(`Total runs: ${runCount}`);
+            this.logger.info(`Best profit: ${bestProfit.toFixed(2)}`);
+            if (bestConfig) {
+                this.logger.info(`Best config: ${JSON.stringify(bestConfig)}`);
+                this.logger.info(`Best performance: ${JSON.stringify(bestPerformance)}`);
+            }
+            // --- Update session status to completed or stopped ---
+            const sessionCtx = { symbol, timeframe, startTimestamp: Number(candleStartTimestamp), endTimestamp: Number(candleEndTimestamp) };
+            const finalSessionSummary: SessionSummary = {
+                symbol,
+                timeframe,
+                startTimestamp: Number(candleStartTimestamp),
+                endTimestamp: Number(candleEndTimestamp),
+                runCount,
+                lastConfigHash: bestConfig ? BotFingerprinter.generateHash(bestConfig) : '',
+                lastUpdate: Date.now(),
+                bestProfit,
+                bestConfigHash: bestConfig ? BotFingerprinter.generateHash(bestConfig) : '',
+                currentProfit: bestPerformance ? bestPerformance.profit : 0,
+                currentStatus: stopRequested ? 'stopped' as SessionStatus : 'completed' as SessionStatus,
+                avgProfit: runCount > 0 ? totalProfit / runCount : 0,
+                errorCount: 0,
+                completedRuns: runCount,
+                active: false,
+                notes: '',
+            };
+            await sessionRegistry.updateSession(sessionCtx, finalSessionSummary);
+            return {
+                success: true,
+                message: `Backtest loop completed. Total runs: ${runCount}`
+            };
+        } catch (error) {
+            this.logger.error(`Script execution failed: ${error instanceof Error ? error.message : String(error)}`, error instanceof Error ? error : undefined);
+            const durationMs = Date.now() - startTime;
+            // --- Update session status to failed ---
+            try {
+                const symbol = context.inputs.symbol as string;
+                const timeframe = context.inputs.timeframe as string;
+                const sessionCtx = { symbol, timeframe, startTimestamp: 0, endTimestamp: 0 };
+                const driver = new RedisRegistryDriver();
+                const sessionRegistry = new SessionRegistry(driver);
+                const failedSessionSummary: Partial<SessionSummary> = {
+                    currentStatus: 'failed' as SessionStatus,
+                    lastUpdate: Date.now(),
+                    active: false,
+                    notes: `Script failed: ${error instanceof Error ? error.message : String(error)}`,
+                };
+                await sessionRegistry.updateSession(sessionCtx, failedSessionSummary as SessionSummary);
+            } catch { }
+            return {
+                success: false,
+                message: `Script execution failed: ${error instanceof Error ? error.message : String(error)}`,
+                error: error instanceof Error ? error : new Error(String(error)),
+                data: { durationMs }
+            };
+        }
+    }
+}
+
+// Create metadata for the script
+const metadata: ScriptMetadata = {
+    id: 'direct-backtest',
+    name: 'Direct Backtest Runner',
+    description: 'Runs a single-bot backtest simulation directly, bypassing Backtester/BacktestEngine.',
+    category: ScriptCategory.MISC,
+    tags: ['backtest', 'simulation', 'direct', 'strategy'],
+    version: '1.0.0',
+    author: 'System Generated',
+    icon: '🔬'
+};
+
+// Export the script configuration
+export const DirectBacktestScript: ScriptConfig = {
+    type: ScriptType.REGULAR,
+    metadata,
+    factory: (metadata) => new DirectBacktestScriptImpl(metadata)
+}; 

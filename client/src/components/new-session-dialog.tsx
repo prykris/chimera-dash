@@ -34,6 +34,7 @@ import {
 
 // Form schema with validation
 const newSessionSchema = z.object({
+  exchange: z.string().min(1, "Exchange is required"),
   symbol: z.string().min(1, "Symbol is required"),
   timeframe: z.string().min(1, "Timeframe is required"),
   startDate: z.string().refine((val) => !isNaN(Date.parse(val)), {
@@ -42,8 +43,14 @@ const newSessionSchema = z.object({
   endDate: z.string().refine((val) => !isNaN(Date.parse(val)), {
     message: "End date must be a valid date"
   }),
-  batchSize: z.string().refine((val) => !isNaN(Number(val)) && Number(val) > 0, {
-    message: "Batch size must be a positive number"
+  candleLimit: z.string().refine((val) => !isNaN(Number(val)) && Number(val) > 0, {
+    message: "Candle limit must be a positive number"
+  }),
+  initialBalance: z.string().refine((val) => !isNaN(Number(val)) && Number(val) > 0, {
+    message: "Initial balance must be a positive number"
+  }),
+  feePercentage: z.string().refine((val) => !isNaN(Number(val)) && Number(val) >= 0 && Number(val) <= 1, {
+    message: "Fee percentage must be between 0 and 1"
   }),
   notes: z.string().optional(),
 });
@@ -57,23 +64,42 @@ export function NewSessionDialog() {
   const form = useForm<NewSessionFormValues>({
     resolver: zodResolver(newSessionSchema),
     defaultValues: {
+      exchange: "binance",
       symbol: "BTC/USD",
       timeframe: "1h",
       startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 30 days ago
       endDate: new Date().toISOString().split('T')[0], // Today
-      batchSize: "10",
+      candleLimit: "500",
+      initialBalance: "10000",
+      feePercentage: "0.001",
       notes: "",
     },
   });
 
   function onSubmit(values: NewSessionFormValues) {
+    // Convert timestamps from date strings to Unix timestamps
+    const startTimestamp = new Date(values.startDate).getTime();
+    const endTimestamp = new Date(values.endDate).getTime();
+    
+    const sessionParams = {
+      exchange: values.exchange,
+      symbol: values.symbol,
+      timeframe: values.timeframe,
+      startTimestamp,
+      endTimestamp,
+      candleLimit: parseInt(values.candleLimit),
+      initialBalance: parseFloat(values.initialBalance),
+      feePercentage: parseFloat(values.feePercentage),
+      notes: values.notes || '',
+    };
+    
     toast({
       title: "New session created",
-      description: `Created ${values.symbol} session from ${values.startDate} to ${values.endDate}`,
+      description: `Created ${values.symbol} session on ${values.exchange} with ${values.candleLimit} candles`,
     });
     
-    // TODO: Implement actual session creation logic
-    console.log(values);
+    // TODO: Implement actual API call to create the session
+    console.log('Session parameters:', sessionParams);
     
     // Close the dialog
     setOpen(false);
@@ -199,17 +225,83 @@ export function NewSessionDialog() {
               />
             </div>
             
+            <div className="grid grid-cols-3 gap-4">
+              <FormField
+                control={form.control}
+                name="exchange"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Exchange</FormLabel>
+                    <Select 
+                      onValueChange={field.onChange} 
+                      defaultValue={field.value}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select exchange" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="binance">Binance</SelectItem>
+                        <SelectItem value="bybit">ByBit</SelectItem>
+                        <SelectItem value="kucoin">KuCoin</SelectItem>
+                        <SelectItem value="coinbase">Coinbase</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormDescription>
+                      Exchange to fetch data from
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              
+              <FormField
+                control={form.control}
+                name="candleLimit"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Candle Limit</FormLabel>
+                    <FormControl>
+                      <Input type="number" {...field} min="100" />
+                    </FormControl>
+                    <FormDescription>
+                      Number of candles to fetch
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              
+              <FormField
+                control={form.control}
+                name="initialBalance"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Initial Balance</FormLabel>
+                    <FormControl>
+                      <Input type="number" {...field} min="1000" />
+                    </FormControl>
+                    <FormDescription>
+                      Starting capital for backtests
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+            
             <FormField
               control={form.control}
-              name="batchSize"
+              name="feePercentage"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Batch Size</FormLabel>
+                  <FormLabel>Fee Percentage</FormLabel>
                   <FormControl>
-                    <Input type="number" {...field} min="1" />
+                    <Input type="number" {...field} min="0" max="1" step="0.001" />
                   </FormControl>
                   <FormDescription>
-                    Number of bots to run simultaneously
+                    Exchange fee percentage (e.g., 0.001 for 0.1%)
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
