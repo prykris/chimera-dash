@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import StatisticsGrid from "@/components/statistics-grid";
 import RecentSessions from "@/components/recent-sessions";
 import PerformanceCharts from "@/components/performance-charts";
+import MarketOverview from "@/components/market-overview";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -17,7 +18,7 @@ interface RedisStatusResponse {
 
 export default function Dashboard() {
   const [currentView, setCurrentView] = useState("overview");
-  const { data: redisStatus } = useQuery({
+  const { data: redisStatus } = useQuery<RedisStatusResponse>({
     queryKey: ['/api/status/redis'],
     refetchInterval: 10000, // Check Redis status every 10 seconds
   });
@@ -75,6 +76,9 @@ export default function Dashboard() {
         <TabsContent value="overview" className="mt-4 space-y-8">
           {/* Dashboard Statistics */}
           <StatisticsGrid />
+          
+          {/* Market Overview */}
+          <MarketOverview />
           
           {/* Recent Sessions Table */}
           <RecentSessions />

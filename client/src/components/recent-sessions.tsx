@@ -17,7 +17,8 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SessionSummary } from "@shared/schema";
 import { formatSessionId } from "@shared/schema";
-import { PlusCircle, Clock, ArrowUpDown, Activity, CheckCircle2, AlertTriangle, XCircle } from "lucide-react";
+import { NewSessionDialog } from "@/components/new-session-dialog";
+import { Clock, ArrowUpDown, Activity, CheckCircle2, AlertTriangle, XCircle, PlusCircle } from "lucide-react";
 
 function formatTimeRange(startTime: number, endTime: number): string {
   return `${format(startTime, 'MMM d, yyyy')} - ${format(endTime, 'MMM d, yyyy')}`;
@@ -217,10 +218,7 @@ export default function RecentSessions() {
             }
           </CardDescription>
         </div>
-        <Button className="gap-2">
-          <PlusCircle className="h-4 w-4" />
-          New Session
-        </Button>
+        <NewSessionDialog />
       </CardHeader>
 
       <div className="overflow-x-auto">
