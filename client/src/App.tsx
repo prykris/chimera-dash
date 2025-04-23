@@ -8,6 +8,8 @@ import Dashboard from "@/pages/dashboard";
 import Sessions from "@/pages/sessions";
 import SessionDetail from "@/pages/session-detail";
 import BotDetail from "@/pages/bot-detail";
+import Registry from "@/pages/registry";
+import Settings from "@/pages/settings";
 import AppLayout from "@/layouts/app-layout";
 
 function Router() {
@@ -18,6 +20,8 @@ function Router() {
       <Route path="/sessions" component={Sessions} />
       <Route path="/sessions/:sessionId" component={SessionDetail} />
       <Route path="/sessions/:sessionId/bots/:configHash" component={BotDetail} />
+      <Route path="/registry" component={Registry} />
+      <Route path="/settings" component={Settings} />
       
       {/* Fallback to 404 */}
       <Route component={NotFound} />
