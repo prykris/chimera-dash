@@ -155,6 +155,49 @@ export async function registerRoutes(app: Express): Promise<void> {
     }
   });
 
+  // Market data API endpoint - Proxy for exchange APIs to avoid CORS issues
+  app.get("/api/market/klines", async (req: Request, res: Response) => {
+    try {
+      const { symbol, interval, limit } = req.query;
+      
+      // Validate params
+      if (!symbol) {
+        return res.status(400).json({ error: "Symbol parameter is required" });
+      }
+      
+      // Default values
+      const queryInterval = interval || '1d';
+      const queryLimit = limit || '30';
+      
+      // Build the URL for Binance API (public API)
+      const binanceUrl = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${queryInterval}&limit=${queryLimit}`;
+      
+      // Fetch data from Binance
+      const response = await fetch(binanceUrl);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch market data: ${response.statusText}`);
+      }
+      
+      const rawData = await response.json();
+      
+      // Transform the data to a friendlier format for our frontend
+      const transformedData = rawData.map((kline: any) => ({
+        date: new Date(kline[0]).toISOString().split('T')[0], // Open time
+        price: parseFloat(kline[4]), // Close price
+        volume: parseFloat(kline[5]), // Volume
+        high: parseFloat(kline[2]),
+        low: parseFloat(kline[3]),
+        open: parseFloat(kline[1]),
+      }));
+      
+      res.json(transformedData);
+    } catch (error) {
+      console.error("Error fetching market data:", error);
+      res.status(500).json({ error: "Failed to fetch market data from exchange" });
+    }
+  });
+
   // Don't start the server here, let the main index.ts handle it
   return Promise.resolve();
 }
