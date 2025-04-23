@@ -6,7 +6,7 @@ import http from 'http';
 
 async function start() {
   const app = express();
-  const PORT = process.env.PORT || 5000;
+  const PORT = Number(process.env.PORT) || 5000;
 
   // Add basic middleware
   app.use(express.json());

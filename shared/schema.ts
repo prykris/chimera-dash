@@ -101,7 +101,7 @@ export function formatSessionId(
   startTimestamp: number,
   endTimestamp: number
 ): string {
-  return `${symbol}:${timeframe}:${startTimestamp}:${endTimestamp}`;
+  return `${symbol}:${timeframe}:${startTimestamp}-${endTimestamp}`;
 }
 
 export function parseSessionId(sessionId: string): {
@@ -110,7 +110,8 @@ export function parseSessionId(sessionId: string): {
   startTimestamp: number;
   endTimestamp: number;
 } {
-  const [symbol, timeframe, startTimestampStr, endTimestampStr] = sessionId.split(':');
+  const [symbol, timeframe, startEnd] = sessionId.split(":");
+  const [startTimestampStr, endTimestampStr] = startEnd.split("-");
   return {
     symbol,
     timeframe,
