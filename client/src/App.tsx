@@ -18,7 +18,6 @@ function Router() {
       {/* Main routes */}
       <Route path="/" component={Dashboard} />
       <Route path="/sessions" component={Sessions} />
-      <Route path="/sessions/:symbol/:timeframeAndRange" component={SessionDetail} />
       <Route path="/sessions/:sessionId" component={SessionDetail} />
       <Route path="/sessions/:sessionId/bots/:configHash" component={BotDetail} />
       <Route path="/registry" component={Registry} />

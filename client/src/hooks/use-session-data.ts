@@ -9,12 +9,14 @@ export function useSessionData(sessionId?: string) {
   });
   
   // Fetch specific session if sessionId is provided
+  // NOTE: Keep the sessionId format as-is for API calls
   const sessionQuery = useQuery<SessionSummary>({
     queryKey: [`/api/sessions/${sessionId}`],
     enabled: !!sessionId,
   });
   
   // Get session aggregate stats (total bots, completion stats, etc.)
+  // NOTE: Keep the sessionId format as-is for API calls
   const sessionStatsQuery = useQuery({
     queryKey: [`/api/sessions/${sessionId}/bots/aggregate`],
     enabled: !!sessionId,

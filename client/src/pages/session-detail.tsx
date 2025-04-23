@@ -11,20 +11,14 @@ import { formatSessionId, parseSessionId } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 
 export default function SessionDetail() {
-  // Get parameters from the URL - handle both formats
-  const params = useParams<{ 
-    sessionId?: string;
-    symbol?: string;
-    timeframeAndRange?: string;
-  }>();
+  // Get sessionId parameter from the URL
+  const params = useParams<{ sessionId: string }>();
   const [, navigate] = useLocation();
   const { toast } = useToast();
   
-  // Calculate the actual sessionId from URL parameters
-  const [actualSessionId, setActualSessionId] = useState<string | undefined>(
-    // If the sessionId exists, convert from URL-safe format (replace _ with /)
-    params.sessionId ? params.sessionId.replace(/_/g, '/') : undefined
-  );
+  // Keep sessionId as is - don't replace underscores with slashes
+  // This ensures API calls are made with the correct format
+  const sessionId = params.sessionId;
   
   // Set up filters state for bot runs
   const [filters, setFilters] = useState<{
@@ -33,45 +27,10 @@ export default function SessionDetail() {
     maxProfit?: number;
   }>({});
   
-  // Handle the alternative URL format: /sessions/AAVE/USDT:1h:1707588000000-1745380800000
-  useEffect(() => {
-    if (params.symbol && params.timeframeAndRange) {
-      try {
-        // Parse the timeframeAndRange parameter (format: USDT:1h:1707588000000-1745380800000)
-        const parts = params.timeframeAndRange.split(':');
-        if (parts.length === 3) {
-          const quote = parts[0]; // USDT
-          const timeframe = parts[1]; // 1h
-          const rangeParts = parts[2].split('-');
-          
-          if (rangeParts.length === 2) {
-            const startTimestamp = parseInt(rangeParts[0], 10);
-            const endTimestamp = parseInt(rangeParts[1], 10);
-            
-            // Construct the session ID
-            const symbol = `${params.symbol}/${quote}`;
-            const newSessionId = formatSessionId(symbol, timeframe, startTimestamp, endTimestamp);
-            
-            // Set the actual session ID to be used for data fetching
-            setActualSessionId(newSessionId);
-          }
-        }
-      } catch (error) {
-        console.error("Error parsing URL parameters:", error);
-        toast({
-          variant: "destructive",
-          title: "Error",
-          description: "Invalid session URL format"
-        });
-        navigate("/sessions");
-      }
-    }
-  }, [params.symbol, params.timeframeAndRange, navigate, toast]);
-  
   // Fetch session data
-  const { session, isLoadingSession, sessionStats, isLoadingStats } = useSessionData(actualSessionId);
+  const { session, isLoadingSession, sessionStats, isLoadingStats } = useSessionData(sessionId);
   
-  if (!actualSessionId) {
+  if (!sessionId) {
     return (
       <div className="text-center py-12">
         <h2 className="text-xl font-semibold">Session ID not provided</h2>
@@ -80,8 +39,8 @@ export default function SessionDetail() {
     );
   }
   
-  // Parse session ID components for display
-  const sessionComponents = parseSessionId(actualSessionId);
+  // Parse session ID components for display - replace underscores with slashes for parsing
+  const sessionComponents = parseSessionId(sessionId.replace(/_/g, '/'));
   
   const formatTimeRange = (startTime: number, endTime: number): string => {
     return `${format(startTime, 'MMM d, yyyy')} - ${format(endTime, 'MMM d, yyyy')}`;
@@ -169,7 +128,7 @@ export default function SessionDetail() {
         </CardHeader>
         
         <BotRunsTable 
-          sessionId={actualSessionId}
+          sessionId={sessionId}
           status={filters.status}
           minProfit={filters.minProfit}
           maxProfit={filters.maxProfit}
