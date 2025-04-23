@@ -1,13 +1,6 @@
 import { Input } from "@/components/ui/input";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { 
-  DropdownMenu, 
-  DropdownMenuContent, 
-  DropdownMenuItem, 
-  DropdownMenuTrigger 
-} from "@/components/ui/dropdown-menu";
-import { Bell, Search, User, LogOut, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Bell, Search } from "lucide-react";
 
 type HeaderProps = {
   title?: string;
@@ -45,9 +38,8 @@ export default function Header({ title = "Dashboard", onMenuClick }: HeaderProps
           </div>
         </div>
         
-        {/* User menu */}
+        {/* Notifications */}
         <div className="ml-4 flex items-center md:ml-6">
-          {/* Notifications button */}
           <Button
             variant="ghost"
             size="icon"
@@ -56,34 +48,6 @@ export default function Header({ title = "Dashboard", onMenuClick }: HeaderProps
             <span className="sr-only">View notifications</span>
             <Bell className="h-5 w-5" />
           </Button>
-
-          {/* Profile dropdown */}
-          <div className="relative ml-3">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="rounded-full">
-                  <span className="sr-only">Open user menu</span>
-                  <Avatar className="h-8 w-8 bg-primary-700">
-                    <AvatarFallback>JD</AvatarFallback>
-                  </Avatar>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
-                <DropdownMenuItem>
-                  <User className="mr-2 h-4 w-4" />
-                  <span>Profile</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem>
-                  <Settings className="mr-2 h-4 w-4" />
-                  <span>Settings</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem>
-                  <LogOut className="mr-2 h-4 w-4" />
-                  <span>Sign out</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
         </div>
       </div>
     </div>
