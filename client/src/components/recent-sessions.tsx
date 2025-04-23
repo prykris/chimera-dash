@@ -143,6 +143,7 @@ export default function RecentSessions() {
   };
   
   const renderSessionRow = (session: SessionSummary) => {
+    // Format sessionId for API calls
     const sessionId = formatSessionId(
       session.symbol,
       session.timeframe,
@@ -150,11 +151,15 @@ export default function RecentSessions() {
       session.endTimestamp
     );
     
+    // Format the URL-safe version of the sessionId
+    // Replace / with _ for URL compatibility
+    const urlSafeSessionId = sessionId.replace(/\//g, '_');
+    
     return (
       <TableRow 
         key={sessionId}
         className="hover:bg-gray-50 cursor-pointer"
-        onClick={() => window.location.href = `/sessions/${sessionId}`}
+        onClick={() => window.location.href = `/sessions/${urlSafeSessionId}`}
       >
         <TableCell className="font-medium">
           {session.symbol} / {session.timeframe}
@@ -177,8 +182,9 @@ export default function RecentSessions() {
             variant="ghost" 
             size="sm" 
             className="text-primary hover:text-primary"
-            onClick={() => {
-              window.location.href = `/sessions/${sessionId}`;
+            onClick={(e) => {
+              e.stopPropagation();
+              window.location.href = `/sessions/${urlSafeSessionId}`;
             }}
           >
             View

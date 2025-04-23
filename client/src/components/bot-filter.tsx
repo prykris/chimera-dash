@@ -31,7 +31,8 @@ export default function BotFilter({ onFilterChange }: BotFilterProps) {
   
   const handleApplyFilters = () => {
     onFilterChange({
-      status,
+      // Only pass status if it's not 'all'
+      status: status === 'all' ? undefined : status,
       minProfit: minProfit !== "" ? parseFloat(minProfit) : undefined,
       maxProfit: maxProfit !== "" ? parseFloat(maxProfit) : undefined,
     });
@@ -65,7 +66,7 @@ export default function BotFilter({ onFilterChange }: BotFilterProps) {
                 <SelectValue placeholder="All" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All</SelectItem>
+                <SelectItem value="all">All</SelectItem>
                 <SelectItem value="completed">Completed</SelectItem>
                 <SelectItem value="running">Running</SelectItem>
                 <SelectItem value="failed">Failed</SelectItem>

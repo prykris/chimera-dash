@@ -21,7 +21,10 @@ export default function SessionDetail() {
   const { toast } = useToast();
   
   // Calculate the actual sessionId from URL parameters
-  const [actualSessionId, setActualSessionId] = useState<string | undefined>(params.sessionId);
+  const [actualSessionId, setActualSessionId] = useState<string | undefined>(
+    // If the sessionId exists, convert from URL-safe format (replace _ with /)
+    params.sessionId ? params.sessionId.replace(/_/g, '/') : undefined
+  );
   
   // Set up filters state for bot runs
   const [filters, setFilters] = useState<{
