@@ -83,7 +83,7 @@ export default function MarketOverview() {
   const [marketData, setMarketData] = useState<any[]>([]);
   const [selectedSymbol, setSelectedSymbol] = useState("BTCUSDT");
   const [isLoading, setIsLoading] = useState(true);
-  const [useRealData, setUseRealData] = useState(true);
+  const [useRealData, setUseRealData] = useState(false); // Default to fallback data
   const { toast } = useToast();
   
   useEffect(() => {
@@ -305,7 +305,7 @@ export default function MarketOverview() {
       </Tabs>
       
       <CardContent className="pt-0 pb-6 text-xs text-muted-foreground text-center">
-        Note: Sample data is shown for illustrative purposes. Connect to Redis for live data.
+        Note: Demo data is shown for illustrative purposes. All profits displayed in USDT.
       </CardContent>
     </Card>
   );
