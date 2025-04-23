@@ -3,65 +3,79 @@ import { Link } from "wouter";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+import { Layers, Bot, AlertTriangle, PieChart, ArrowRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 type StatCardProps = {
   title: string;
   value: string | number;
-  icon: string;
-  iconColor: string;
-  iconBgColor: string;
+  icon: React.ReactNode;
   linkText?: string;
   linkHref?: string;
   isLoading?: boolean;
+  variant?: "default" | "success" | "danger" | "warning" | "info";
 };
 
 function StatCard({
   title,
   value,
   icon,
-  iconColor,
-  iconBgColor,
   linkText,
   linkHref,
   isLoading = false,
+  variant = "default",
 }: StatCardProps) {
+  const variantStyles = {
+    default: {
+      card: "border-primary/10",
+      icon: "bg-primary/10 text-primary"
+    },
+    success: {
+      card: "border-green-500/10",
+      icon: "bg-green-500/10 text-green-500"
+    },
+    danger: {
+      card: "border-red-500/10",
+      icon: "bg-red-500/10 text-red-500"
+    },
+    warning: {
+      card: "border-amber-500/10",
+      icon: "bg-amber-500/10 text-amber-500"
+    },
+    info: {
+      card: "border-blue-500/10",
+      icon: "bg-blue-500/10 text-blue-500"
+    }
+  };
+
   return (
-    <Card className="bg-white overflow-hidden shadow rounded-lg">
-      <CardContent className="px-4 py-5 sm:p-6">
+    <Card className={cn("shadow-sm hover:shadow transition-all duration-200", variantStyles[variant].card)}>
+      <CardContent className="p-6">
         <div className="flex items-center">
           <div className={cn(
             "flex-shrink-0 rounded-md p-3",
-            iconBgColor
+            variantStyles[variant].icon
           )}>
-            <i className={cn(
-              "fas",
-              `fa-${icon}`,
-              iconColor
-            )}></i>
+            {icon}
           </div>
           <div className="ml-5 w-0 flex-1">
-            <dl>
-              <dt className="text-sm font-medium text-gray-500 truncate">{title}</dt>
-              <dd>
-                {isLoading ? (
-                  <Skeleton className="h-7 w-20" />
-                ) : (
-                  <div className="text-lg font-semibold text-gray-900">{value}</div>
-                )}
-              </dd>
-            </dl>
+            <p className="text-sm font-medium text-muted-foreground truncate">{title}</p>
+            {isLoading ? (
+              <Skeleton className="h-7 w-20 mt-1" />
+            ) : (
+              <p className="text-2xl font-bold">{value}</p>
+            )}
           </div>
         </div>
       </CardContent>
       {linkText && linkHref && (
-        <CardFooter className="bg-gray-50 px-4 py-2 sm:px-6">
-          <div className="text-sm">
-            <Link href={linkHref}>
-              <a className="font-medium text-primary-600 hover:text-primary-500">
-                {linkText}
-              </a>
-            </Link>
-          </div>
+        <CardFooter className="bg-muted/30 px-6 py-3 border-t">
+          <Link href={linkHref}>
+            <Button variant="link" className="p-0 h-auto font-medium text-primary flex items-center gap-1">
+              {linkText}
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+          </Link>
         </CardFooter>
       )}
     </Card>
@@ -90,45 +104,41 @@ export default function StatisticsGrid() {
       <StatCard
         title="Active Sessions"
         value={activeSessions}
-        icon="layer-group"
-        iconColor="text-primary-600"
-        iconBgColor="bg-primary-100"
+        icon={<Layers size={24} />}
         linkText="View all sessions"
         linkHref="/sessions"
         isLoading={sessionsLoading}
+        variant="default"
       />
       
       <StatCard
         title="Total Bot Runs"
         value={totalBotRuns.toLocaleString()}
-        icon="robot"
-        iconColor="text-green-600"
-        iconBgColor="bg-green-100"
+        icon={<Bot size={24} />}
         linkText="View all bots"
         linkHref="/sessions"
         isLoading={sessionsLoading}
+        variant="success"
       />
       
       <StatCard
         title="Failed Runs"
         value={failedRuns.toLocaleString()}
-        icon="exclamation-triangle"
-        iconColor="text-red-600"
-        iconBgColor="bg-red-100"
+        icon={<AlertTriangle size={24} />}
         linkText="View errors"
         linkHref="/sessions"
         isLoading={sessionsLoading}
+        variant="danger"
       />
       
       <StatCard
         title="Success Rate"
         value={`${successRate}%`}
-        icon="chart-pie"
-        iconColor="text-indigo-600"
-        iconBgColor="bg-indigo-100"
+        icon={<PieChart size={24} />}
         linkText="View details"
         linkHref="/sessions"
         isLoading={sessionsLoading}
+        variant="info"
       />
     </div>
   );

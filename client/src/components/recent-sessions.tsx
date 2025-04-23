@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SessionSummary } from "@shared/schema";
 import { formatSessionId } from "@shared/schema";
+import { PlusCircle, Clock, ArrowUpDown, Activity, CheckCircle2, AlertTriangle, XCircle } from "lucide-react";
 
 function formatTimeRange(startTime: number, endTime: number): string {
   return `${format(startTime, 'MMM d, yyyy')} - ${format(endTime, 'MMM d, yyyy')}`;
@@ -54,10 +55,16 @@ export default function RecentSessions() {
       <Pagination>
         <PaginationContent>
           <PaginationItem>
-            <PaginationPrevious 
+            <Button
+              variant="outline"
+              size="icon"
               onClick={() => setPage(p => Math.max(1, p - 1))}
               disabled={page === 1}
-            />
+              className="h-8 w-8"
+            >
+              <span className="sr-only">Go to previous page</span>
+              <ArrowUpDown className="h-4 w-4 rotate-90" />
+            </Button>
           </PaginationItem>
           
           {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
@@ -69,21 +76,29 @@ export default function RecentSessions() {
             
             return (
               <PaginationItem key={pageNum}>
-                <PaginationLink
-                  isActive={pageNum === page}
+                <Button
+                  variant={pageNum === page ? "default" : "outline"}
+                  size="sm"
                   onClick={() => setPage(pageNum)}
+                  className="h-8 w-8"
                 >
                   {pageNum}
-                </PaginationLink>
+                </Button>
               </PaginationItem>
             );
           })}
           
           <PaginationItem>
-            <PaginationNext 
+            <Button
+              variant="outline"
+              size="icon"
               onClick={() => setPage(p => Math.min(totalPages, p + 1))}
               disabled={page === totalPages}
-            />
+              className="h-8 w-8"
+            >
+              <span className="sr-only">Go to next page</span>
+              <ArrowUpDown className="h-4 w-4 -rotate-90" />
+            </Button>
           </PaginationItem>
         </PaginationContent>
       </Pagination>
@@ -92,18 +107,38 @@ export default function RecentSessions() {
   
   const renderSessionStatus = (session: SessionSummary) => {
     if (session.active && session.currentStatus === 'running') {
-      return <Badge variant="outline" className="bg-yellow-100 text-yellow-800">Running</Badge>;
+      return (
+        <Badge variant="outline" className="bg-amber-100 border-amber-200 text-amber-700 flex items-center gap-1">
+          <Activity className="h-3 w-3" />
+          <span>Running</span>
+        </Badge>
+      );
     }
     
     if (session.active) {
-      return <Badge variant="outline" className="bg-green-100 text-green-800">Active</Badge>;
+      return (
+        <Badge variant="outline" className="bg-green-100 border-green-200 text-green-700 flex items-center gap-1">
+          <CheckCircle2 className="h-3 w-3" />
+          <span>Active</span>
+        </Badge>
+      );
     }
     
     if (session.errorCount > 0 && session.errorCount / session.runCount > 0.5) {
-      return <Badge variant="outline" className="bg-red-100 text-red-800">Failed</Badge>;
+      return (
+        <Badge variant="outline" className="bg-red-100 border-red-200 text-red-700 flex items-center gap-1">
+          <XCircle className="h-3 w-3" />
+          <span>Failed</span>
+        </Badge>
+      );
     }
     
-    return <Badge variant="outline" className="bg-gray-100 text-gray-800">Completed</Badge>;
+    return (
+      <Badge variant="outline" className="bg-slate-100 border-slate-200 text-slate-700 flex items-center gap-1">
+        <CheckCircle2 className="h-3 w-3" />
+        <span>Completed</span>
+      </Badge>
+    );
   };
   
   const renderSessionRow = (session: SessionSummary) => {
@@ -137,9 +172,16 @@ export default function RecentSessions() {
           {formatLastUpdate(session.lastUpdate)}
         </TableCell>
         <TableCell className="text-right">
-          <Link href={`/sessions/${sessionId}`}>
-            <a className="text-primary-600 hover:text-primary-900">View</a>
-          </Link>
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            className="text-primary hover:text-primary"
+            onClick={() => {
+              window.location.href = `/sessions/${sessionId}`;
+            }}
+          >
+            View
+          </Button>
         </TableCell>
       </TableRow>
     );
@@ -162,32 +204,39 @@ export default function RecentSessions() {
   );
   
   return (
-    <Card className="bg-white shadow rounded-lg mb-8">
-      <CardHeader className="px-4 py-5 sm:px-6 flex justify-between items-center flex-wrap gap-4">
+    <Card className="mb-8 shadow-sm">
+      <CardHeader className="flex justify-between items-center flex-wrap gap-4">
         <div>
-          <CardTitle className="text-lg leading-6 font-medium text-gray-900">
+          <CardTitle className="text-xl font-semibold">
             Recent Backtest Sessions
           </CardTitle>
-          <CardDescription className="mt-1 max-w-2xl text-sm text-gray-500">
+          <CardDescription>
             {isLoading 
               ? "Loading sessions..." 
               : `Showing ${paginatedSessions.length} of ${sortedSessions.length} sessions`
             }
           </CardDescription>
         </div>
-        <Button>
+        <Button className="gap-2">
+          <PlusCircle className="h-4 w-4" />
           New Session
         </Button>
       </CardHeader>
 
       <div className="overflow-x-auto">
         <Table>
-          <TableHeader className="bg-gray-50">
+          <TableHeader>
             <TableRow>
               <TableHead>Symbol/Timeframe</TableHead>
-              <TableHead>Time Range</TableHead>
+              <TableHead className="flex items-center gap-1">
+                <Clock className="h-4 w-4" />
+                <span>Time Range</span>
+              </TableHead>
               <TableHead>Run Count</TableHead>
-              <TableHead>Best Profit</TableHead>
+              <TableHead className="flex items-center gap-1">
+                <ArrowUpDown className="h-4 w-4" />
+                <span>Best Profit</span>
+              </TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Last Update</TableHead>
               <TableHead className="text-right">
@@ -203,7 +252,7 @@ export default function RecentSessions() {
             
             {!isLoading && paginatedSessions.length === 0 && (
               <TableRow>
-                <TableCell colSpan={7} className="text-center py-4 text-gray-500">
+                <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                   No sessions found
                 </TableCell>
               </TableRow>
@@ -212,10 +261,10 @@ export default function RecentSessions() {
         </Table>
       </div>
       
-      <CardFooter className="bg-gray-50 px-4 py-3 border-t border-gray-200 sm:px-6">
+      <CardFooter className="border-t bg-muted/30">
         <div className="flex items-center justify-between w-full">
           <div>
-            <p className="text-sm text-gray-700">
+            <p className="text-sm text-muted-foreground">
               Showing <span className="font-medium">{(page - 1) * pageSize + 1}</span>
               {' '} to <span className="font-medium">
                 {Math.min(page * pageSize, sortedSessions.length)}

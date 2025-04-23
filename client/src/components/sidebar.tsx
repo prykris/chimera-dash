@@ -1,6 +1,17 @@
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
+import { 
+  LayoutDashboard, 
+  Layers, 
+  Bot, 
+  Settings, 
+  X, 
+  AlertCircle,
+  Database
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 type SidebarProps = {
   isOpen: boolean;
@@ -19,10 +30,10 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const isConnected = redisStatus?.connected || false;
   
   const navItems = [
-    { name: "Dashboard", path: "/", icon: "chart-line" },
-    { name: "All Sessions", path: "/sessions", icon: "layer-group" },
-    { name: "Bot Registry", path: "/registry", icon: "robot" },
-    { name: "Settings", path: "/settings", icon: "cog" },
+    { name: "Dashboard", path: "/", icon: <LayoutDashboard size={18} /> },
+    { name: "All Sessions", path: "/sessions", icon: <Layers size={18} /> },
+    { name: "Bot Registry", path: "/registry", icon: <Bot size={18} /> },
+    { name: "Settings", path: "/settings", icon: <Settings size={18} /> },
   ];
 
   return (
@@ -30,56 +41,54 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       {/* Mobile sidebar */}
       <div 
         className={cn(
-          "fixed inset-y-0 left-0 z-30 w-64 flex flex-col bg-white shadow-lg transform transition-transform duration-300 ease-in-out md:hidden",
+          "fixed inset-y-0 left-0 z-30 w-64 flex flex-col bg-card shadow-lg transform transition-transform duration-300 ease-in-out md:hidden",
           isOpen ? "translate-x-0" : "-translate-x-full"
         )}
       >
         <div className="flex justify-between items-center h-16 px-4 border-b">
-          <h1 className="text-xl font-semibold text-primary-900">Backtest Dashboard</h1>
-          <button 
-            className="text-gray-500 hover:text-gray-700" 
-            onClick={onClose}
-          >
+          <h1 className="text-xl font-semibold text-foreground">Backtest Dashboard</h1>
+          <Button variant="ghost" size="icon" onClick={onClose}>
             <span className="sr-only">Close sidebar</span>
-            <i className="fas fa-times text-lg"></i>
-          </button>
+            <X className="h-5 w-5" />
+          </Button>
         </div>
-        <div className="flex-1 px-2 py-4 overflow-y-auto">
-          <nav className="space-y-1">
-            {navItems.map((item) => (
-              <Link 
-                key={item.path}
-                href={item.path}
-                onClick={onClose}
-              >
-                <a 
-                  className={cn(
-                    "flex items-center px-2 py-2 text-sm font-medium rounded-md",
-                    location === item.path
-                      ? "text-white bg-primary-600" 
-                      : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
-                  )}
-                >
-                  <i className={cn(
-                    "fas fa-" + item.icon,
-                    "mr-3",
-                    location === item.path ? "text-white" : "text-gray-400"
-                  )}></i>
-                  {item.name}
-                </a>
-              </Link>
-            ))}
-          </nav>
-        </div>
+        <ScrollArea className="flex-1">
+          <div className="px-2 py-4">
+            <nav className="space-y-1">
+              {navItems.map((item) => (
+                <div key={item.path}>
+                  <Button 
+                    variant={location === item.path ? "default" : "ghost"}
+                    className={cn(
+                      "w-full justify-start",
+                      location === item.path ? "" : "text-muted-foreground"
+                    )}
+                    onClick={() => {
+                      window.location.href = item.path;
+                      onClose();
+                    }}
+                  >
+                    <span className="mr-3">
+                      {item.icon}
+                    </span>
+                    {item.name}
+                  </Button>
+                </div>
+              ))}
+            </nav>
+          </div>
+        </ScrollArea>
         
         {/* Redis connection status */}
         <div className="p-4 border-t">
           <div className="flex items-center">
             <div className={cn(
-              "w-2 h-2 mr-2 rounded-full",
-              isConnected ? "bg-green-400" : "bg-red-400"
-            )}></div>
-            <span className="text-sm font-medium text-gray-700">
+              "mr-2",
+              isConnected ? "text-green-500" : "text-red-500"
+            )}>
+              <Database size={16} />
+            </div>
+            <span className="text-sm font-medium text-muted-foreground">
               Redis {isConnected ? "Connected" : "Disconnected"}
             </span>
           </div>
@@ -88,47 +97,46 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       
       {/* Desktop sidebar */}
       <div className="hidden md:flex md:w-64 md:flex-col">
-        <div className="flex flex-col flex-grow pt-5 overflow-y-auto bg-white border-r">
+        <div className="flex flex-col flex-grow pt-5 overflow-y-auto bg-card border-r">
           <div className="flex items-center flex-shrink-0 px-4 mb-5">
-            <h1 className="text-xl font-semibold text-primary-900">Backtest Dashboard</h1>
+            <h1 className="text-xl font-semibold text-foreground">Backtest Dashboard</h1>
           </div>
-          <div className="flex flex-col flex-grow">
-            <nav className="flex-1 px-2 pb-4 space-y-1">
-              {navItems.map((item) => (
-                <Link 
-                  key={item.path}
-                  href={item.path}
-                >
-                  <a 
-                    className={cn(
-                      "flex items-center px-2 py-2 text-sm font-medium rounded-md group",
-                      location === item.path 
-                        ? "text-white bg-primary-600" 
-                        : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
-                    )}
-                  >
-                    <i className={cn(
-                      "fas fa-" + item.icon,
-                      "mr-3",
-                      location === item.path 
-                        ? "text-white" 
-                        : "text-gray-400 group-hover:text-gray-500"
-                    )}></i>
-                    {item.name}
-                  </a>
-                </Link>
-              ))}
-            </nav>
-          </div>
+          <ScrollArea className="flex-grow">
+            <div className="px-2 pb-4">
+              <nav className="space-y-1">
+                {navItems.map((item) => (
+                  <div key={item.path}>
+                    <Button 
+                      variant={location === item.path ? "default" : "ghost"}
+                      className={cn(
+                        "w-full justify-start",
+                        location === item.path ? "" : "text-muted-foreground"
+                      )}
+                      onClick={() => {
+                        window.location.href = item.path;
+                      }}
+                    >
+                      <span className="mr-3">
+                        {item.icon}
+                      </span>
+                      {item.name}
+                    </Button>
+                  </div>
+                ))}
+              </nav>
+            </div>
+          </ScrollArea>
           
           {/* Redis connection status */}
           <div className="p-4 border-t">
             <div className="flex items-center">
               <div className={cn(
-                "w-2 h-2 mr-2 rounded-full",
-                isConnected ? "bg-green-400" : "bg-red-400"
-              )}></div>
-              <span className="text-sm font-medium text-gray-700">
+                "mr-2",
+                isConnected ? "text-green-500" : "text-red-500"
+              )}>
+                <Database size={16} />
+              </div>
+              <span className="text-sm font-medium text-muted-foreground">
                 Redis {isConnected ? "Connected" : "Disconnected"}
               </span>
             </div>
