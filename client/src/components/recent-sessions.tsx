@@ -32,7 +32,7 @@ export default function RecentSessions() {
   const pageSize = 5;
   
   // Fetch all sessions
-  const { data: sessions, isLoading, error } = useQuery({
+  const { data: sessions, isLoading, error } = useQuery<SessionSummary[]>({
     queryKey: ['/api/sessions'],
   });
   

@@ -1,8 +1,6 @@
-import { users, type User, type InsertUser, SessionSummary, BacktestRunRecord, Trade } from "@shared/schema";
-import { redisClient } from "./lib/redis";
+import { BacktestRunRecord, InsertUser, SessionSummary, Trade, User } from '@shared/schema';
+import { redisClient } from './lib/redis';
 
-// Modify the interface with any CRUD methods
-// you might need
 export interface IStorage {
   // User methods
   getUser(id: number): Promise<User | undefined>;
@@ -58,40 +56,48 @@ export class MemStorage implements IStorage {
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.username === username,
-    );
+    for (const user of this.users.values()) {
+      if (user.username === username) {
+        return user;
+      }
+    }
+    return undefined;
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
     const id = this.currentId++;
-    const user: User = { ...insertUser, id };
+    const user: User = { ...insertUser, id, createdAt: new Date(), updatedAt: new Date() };
     this.users.set(id, user);
     return user;
   }
-  
-  // Session methods
+
   async getAllSessions(): Promise<SessionSummary[]> {
-    return redisClient.getAllSessions();
+    try {
+      return await redisClient.getAllSessions();
+    } catch (error) {
+      console.error('Error in getAllSessions:', error);
+      return [];
+    }
   }
-  
+
   async getSession(sessionId: string): Promise<SessionSummary | null> {
-    const [symbol, timeframe, startTimestampStr, endTimestampStr] = sessionId.split(':');
-    const startTimestamp = parseInt(startTimestampStr);
-    const endTimestamp = parseInt(endTimestampStr);
-    
-    return redisClient.getSession(symbol, timeframe, startTimestamp, endTimestamp);
+    try {
+      return await redisClient.getSession(sessionId);
+    } catch (error) {
+      console.error(`Error in getSession for ${sessionId}:`, error);
+      return null;
+    }
   }
-  
-  // Bot run methods
+
   async getBotRun(sessionId: string, configHash: string): Promise<BacktestRunRecord | null> {
-    const [symbol, timeframe, startTimestampStr, endTimestampStr] = sessionId.split(':');
-    const startTimestamp = parseInt(startTimestampStr);
-    const endTimestamp = parseInt(endTimestampStr);
-    
-    return redisClient.getBotRun(symbol, timeframe, startTimestamp, endTimestamp, configHash);
+    try {
+      return await redisClient.getBotRun(sessionId, configHash);
+    } catch (error) {
+      console.error(`Error in getBotRun for ${sessionId}:${configHash}:`, error);
+      return null;
+    }
   }
-  
+
   async getBotRunsForSession(
     sessionId: string, 
     options: {
@@ -105,19 +111,23 @@ export class MemStorage implements IStorage {
     bots: Array<{ configHash: string; status: string; profit: number; botId: string; lastUpdated: number }>;
     nextCursor: string;
   }> {
-    return redisClient.getBotRunsForSession(sessionId, options);
+    try {
+      return await redisClient.getBotRunsForSession(sessionId, options);
+    } catch (error) {
+      console.error(`Error in getBotRunsForSession for ${sessionId}:`, error);
+      return { bots: [], nextCursor: '0' };
+    }
   }
-  
-  // Trade methods
+
   async getTradesForBotRun(sessionId: string, configHash: string): Promise<Trade[]> {
-    const [symbol, timeframe, startTimestampStr, endTimestampStr] = sessionId.split(':');
-    const startTimestamp = parseInt(startTimestampStr);
-    const endTimestamp = parseInt(endTimestampStr);
-    
-    return redisClient.getTradesForBotRun(symbol, timeframe, startTimestamp, endTimestamp, configHash);
+    try {
+      return await redisClient.getTradesForBotRun(sessionId, configHash);
+    } catch (error) {
+      console.error(`Error in getTradesForBotRun for ${sessionId}:${configHash}:`, error);
+      return [];
+    }
   }
-  
-  // Aggregation methods
+
   async getSessionAggregateStats(sessionId: string): Promise<{
     totalBots: number;
     completedBots: number;
@@ -127,10 +137,22 @@ export class MemStorage implements IStorage {
     bestProfit: number;
     worstProfit: number;
   }> {
-    return redisClient.getSessionAggregateStats(sessionId);
+    try {
+      return await redisClient.getSessionAggregateStats(sessionId);
+    } catch (error) {
+      console.error(`Error in getSessionAggregateStats for ${sessionId}:`, error);
+      return {
+        totalBots: 0,
+        completedBots: 0,
+        runningBots: 0,
+        failedBots: 0,
+        avgProfit: 0,
+        bestProfit: 0,
+        worstProfit: 0
+      };
+    }
   }
-  
-  // Redis connection status
+
   isRedisConnected(): boolean {
     return redisClient.isReady();
   }

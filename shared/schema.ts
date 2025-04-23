@@ -1,23 +1,28 @@
-import { pgTable, text, serial, integer, boolean, json, timestamp } from "drizzle-orm/pg-core";
+import { relations } from "drizzle-orm";
+import { pgTable, serial, text, timestamp, boolean, integer } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
-// Keep existing user schema
+// PostgreSQL schema for users table (if needed later)
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   username: text("username").notNull().unique(),
   password: text("password").notNull(),
+  email: text("email"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
 export const insertUserSchema = createInsertSchema(users).pick({
   username: true,
   password: true,
+  email: true,
 });
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 
-// Define types for Redis data structures
+// Redis data types
 export type SessionSummary = {
   symbol: string;
   timeframe: string;
@@ -29,7 +34,7 @@ export type SessionSummary = {
   bestProfit: number;
   bestConfigHash: string;
   currentProfit: number;
-  currentStatus: string;
+  currentStatus: 'running' | 'paused' | 'completed' | 'failed' | 'stopped';
   avgProfit: number;
   errorCount: number;
   completedRuns: number;
@@ -42,27 +47,19 @@ export type BacktestRunRecord = {
   botId: string;
   configHash: string;
   lastUpdated: number;
-  resultsMetadata: ResultsMetadata;
-  configuration: BotConfiguration;
-};
-
-export type ResultsMetadata = {
-  profit: number;
-  trades: number;
-  winRate: number;
-  profitFactor?: number;
-  maxDrawdown?: number;
-  avgTradeDuration?: number;
-  sharpeRatio?: number;
-  marketHistory?: MarketHistory;
-};
-
-export type MarketHistory = {
-  startPrice: number;
-  endPrice: number;
-  highPrice: number;
-  lowPrice: number;
-  volatility?: number;
+  resultsMetadata?: {
+    performance?: {
+      profit?: number;
+      sharpe?: number;
+      maxDrawdown?: number;
+      winRate?: number;
+    };
+    marketHistory?: {
+      fills: any[];
+      orders: any[];
+    };
+  };
+  configuration?: BotConfiguration;
 };
 
 export type BotConfiguration = {
@@ -87,20 +84,17 @@ export type BotConfiguration = {
 };
 
 export type Trade = {
-  id: string;
-  type: 'LONG' | 'SHORT';
-  entryTime: number;
-  exitTime: number;
+  entryTimestamp: number;
   entryPrice: number;
+  entrySize: number;
+  exitTimestamp: number;
   exitPrice: number;
-  profitLoss: number;
-  size: number;
-  fee?: number;
-  slippage?: number;
-  reason?: string;
+  exitSize: number;
+  realizedPnl: number;
+  type?: 'LONG' | 'SHORT'; // Added for backward compatibility
 };
 
-// SessionId format helper (used throughout the app)
+// Utility functions for working with Redis keys
 export function formatSessionId(
   symbol: string,
   timeframe: string,
@@ -110,7 +104,6 @@ export function formatSessionId(
   return `${symbol}:${timeframe}:${startTimestamp}:${endTimestamp}`;
 }
 
-// Parse a session ID into its components
 export function parseSessionId(sessionId: string): {
   symbol: string;
   timeframe: string;
@@ -118,7 +111,6 @@ export function parseSessionId(sessionId: string): {
   endTimestamp: number;
 } {
   const [symbol, timeframe, startTimestampStr, endTimestampStr] = sessionId.split(':');
-  
   return {
     symbol,
     timeframe,
@@ -127,7 +119,31 @@ export function parseSessionId(sessionId: string): {
   };
 }
 
-// Bot run ID format helper
 export function formatBotRunId(sessionId: string, configHash: string): string {
   return `${sessionId}:${configHash}`;
+}
+
+// Redis key patterns
+export const REDIS_KEYS = {
+  SESSION: 'bot_registry:session_current',
+  BOT_RUN: 'bot_registry:run',
+  TRADES: 'bot_registry:trades',
+  SESSION_BOTS_SET: 'session' // will be appended with :bots
+};
+
+// Format Redis keys for various entities
+export function formatSessionKey(sessionId: string): string {
+  return `${REDIS_KEYS.SESSION}:${sessionId}`;
+}
+
+export function formatBotRunKey(sessionId: string, configHash: string): string {
+  return `${REDIS_KEYS.BOT_RUN}:${sessionId}:${configHash}`;
+}
+
+export function formatTradesKey(sessionId: string, configHash: string): string {
+  return `${REDIS_KEYS.TRADES}:${sessionId}:${configHash}`;
+}
+
+export function formatSessionBotsSetKey(sessionId: string): string {
+  return `${REDIS_KEYS.SESSION_BOTS_SET}:${sessionId}:bots`;
 }

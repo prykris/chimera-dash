@@ -1,0 +1,242 @@
+Here’s a **detailed, technical, no-bullshit explanation** of the available data, how it’s stored in Redis, and how the pieces relate, based on your actual code in `SessionRegistry.ts`, `BotRegistry.ts`, and `PerformanceRegistry.ts`. This is for React/frontend devs to understand what data is available, how to fetch it, and how to relate it for UI/UX.
+
+---
+
+# Data Model & Storage: Backtest Dashboard
+
+## 1. **Session (SessionRegistry)**
+
+### **What is a Session?**
+A session represents a group of backtest runs for a specific symbol, timeframe, and historical period.  
+It tracks overall stats and metadata for all bot runs in that context.
+
+### **How is it stored?**
+- **Redis Key:**  
+  ```
+  bot_registry:session_current:{symbol}:{timeframe}:{startTimestamp}:{endTimestamp}
+  ```
+  Example:  
+  ```
+  bot_registry:session_current:BTCUSDT:1h:1710000000:1710100000
+  ```
+
+- **Value:**  
+  JSON-serialized `SessionSummary` object:
+  ```ts
+  {
+    symbol: string,
+    timeframe: string,
+    startTimestamp: number,
+    endTimestamp: number,
+    runCount: number,
+    lastConfigHash: string,
+    lastUpdate: number,
+    bestProfit: number,
+    bestConfigHash: string,
+    currentProfit: number,
+    currentStatus: 'running' | 'paused' | 'completed' | 'failed' | 'stopped',
+    avgProfit: number,
+    errorCount: number,
+    completedRuns: number,
+    active: boolean,
+    notes?: string
+  }
+  ```
+
+### **How to list all sessions?**
+- Use `SessionRegistry.listSessions()`, which scans Redis for all keys matching `bot_registry:session_current:*`.
+- Each session is uniquely identified by `{symbol}:{timeframe}:{startTimestamp}:{endTimestamp}`.
+
+---
+
+## 2. **Bot Run (BotRegistry)**
+
+### **What is a Bot Run?**
+A bot run is a single backtest run with a specific bot configuration (strategy parameters, etc.) within a session.  
+Each run has its own config, results, and status.
+
+### **How is it stored?**
+- **Redis Key:**  
+  ```
+  bot_registry:run:{symbol}:{timeframe}:{startTimestamp}:{endTimestamp}:{configHash}
+  ```
+  Example:  
+  ```
+  bot_registry:run:BTCUSDT:1h:1710000000:1710100000:abcdef123456
+  ```
+
+- **Value:**  
+  JSON-serialized `BacktestRunRecord` object:
+  ```ts
+  {
+    status: 'completed' | 'running' | 'failed',
+    botId: string,
+    configHash: string,
+    lastUpdated: number,
+    resultsMetadata?: {
+      performance?: {
+        profit?: number,
+        sharpe?: number,
+        maxDrawdown?: number,
+        winRate?: number,
+        // etc.
+      },
+      marketHistory?: {
+        fills: any[],
+        orders: any[]
+      }
+    },
+    configuration?: BotConfiguration // full bot config object
+  }
+  ```
+
+### **How to list all bot runs for a session?**
+- You need to know all `configHash`es for a session.
+- **Best practice:** Maintain a Redis Set:
+  ```
+  session:{sessionId}:bots
+  ```
+  where `sessionId = {symbol}:{timeframe}:{startTimestamp}:{endTimestamp}`.
+- Each set member is a `configHash`.
+- To get all bot runs for a session:  
+  1. Get all configHashes from the set.
+  2. For each, fetch the corresponding `bot_registry:run:...` key.
+
+### **How to filter bot runs?**
+- Maintain additional sets/sorted sets for status, profit, etc. (see previous answers).
+
+---
+
+## 3. **Trades (PerformanceRegistry)**
+
+### **What is a Trade?**
+A trade is a single entry/exit event for a bot run (i.e., a round-trip position).
+
+### **How is it stored?**
+- **Redis Key:**  
+  ```
+  bot_registry:trades:{symbol}:{timeframe}:{startTimestamp}:{endTimestamp}:{configHash}
+  ```
+  Example:  
+  ```
+  bot_registry:trades:BTCUSDT:1h:1710000000:1710100000:abcdef123456
+  ```
+
+- **Value:**  
+  JSON-serialized array of `Trade` objects:
+  ```ts
+  [
+    {
+      entryTimestamp: number,
+      entryPrice: number,
+      entrySize: number,
+      exitTimestamp: number,
+      exitPrice: number,
+      exitSize: number,
+      realizedPnl: number
+    },
+    ...
+  ]
+  ```
+
+### **How to get trades for a bot run?**
+- You need the session context and the `configHash`.
+- Fetch the key as above.
+
+---
+
+## 4. **How are they related?**
+
+- **Session** is the parent.  
+  - Identified by `{symbol}:{timeframe}:{startTimestamp}:{endTimestamp}`.
+- **Bot Run** is a child of a session.  
+  - Identified by the session context + `configHash`.
+- **Trades** are a child of a bot run.  
+  - Identified by the session context + `configHash`.
+
+**Relationship:**
+```
+Session (1) 
+  └── Bot Run (many, each with unique configHash)
+         └── Trades (many per bot run)
+```
+
+---
+
+## 5. **How to fetch and display in React?**
+
+### **Session List Page**
+- Fetch all sessions (listSessions).
+- Display as a table.
+
+### **Session Detail Page**
+- Fetch session summary.
+- Fetch paginated list of bot runs for this session (using the set of configHashes).
+- For each bot run, display summary (status, profit, etc.).
+
+### **Bot Run Detail Page**
+- Fetch full bot run record (by configHash).
+- Fetch trades for this bot run.
+- Display config, performance, trades, and charts.
+
+---
+
+## 6. **Key Construction Example**
+
+Given:
+- symbol: `BTCUSDT`
+- timeframe: `1h`
+- startTimestamp: `1710000000`
+- endTimestamp: `1710100000`
+- configHash: `abcdef123456`
+
+**Session key:**  
+`bot_registry:session_current:BTCUSDT:1h:1710000000:1710100000`
+
+**Bot run key:**  
+`bot_registry:run:BTCUSDT:1h:1710000000:1710100000:abcdef123456`
+
+**Trades key:**  
+`bot_registry:trades:BTCUSDT:1h:1710000000:1710100000:abcdef123456`
+
+**Session bots set:**  
+`session:BTCUSDT:1h:1710000000:1710100000:bots`
+
+---
+
+## 7. **Summary Table**
+
+| Entity      | Redis Key Pattern                                                                 | Value Type                | How to List/Query                |
+|-------------|----------------------------------------------------------------------------------|---------------------------|----------------------------------|
+| Session     | `bot_registry:session_current:{symbol}:{timeframe}:{start}:{end}`                | `SessionSummary`          | Scan all keys                    |
+| Bot Run     | `bot_registry:run:{symbol}:{timeframe}:{start}:{end}:{configHash}`               | `BacktestRunRecord`       | From session bots set            |
+| Trades      | `bot_registry:trades:{symbol}:{timeframe}:{start}:{end}:{configHash}`            | Array of `Trade`          | By bot run (configHash)          |
+| Bots Index  | `session:{sessionId}:bots`                                                       | Set of configHashes       | SSCAN for pagination/filtering   |
+
+---
+
+## 8. **What to Watch Out For**
+
+- **Pagination:** Never fetch all bot runs at once for large sessions. Use SSCAN/ZSCAN.
+- **Filtering:** If you want to filter by status/profit, you need to maintain those indexes.
+- **Data Consistency:** If a bot run is deleted, remove its configHash from all sets.
+
+---
+
+## 9. **Frontend Data Flow Example**
+
+1. **List Sessions:**  
+   - GET `/api/sessions` → array of session summaries
+
+2. **Session Detail:**  
+   - GET `/api/sessions/:sessionId` → session summary
+   - GET `/api/sessions/:sessionId/bots?cursor=...&limit=50` → paginated bot runs
+
+3. **Bot Run Detail:**  
+   - GET `/api/sessions/:sessionId/bots/:configHash` → bot run record
+   - GET `/api/sessions/:sessionId/bots/:configHash/trades` → trades array
+
+---
+
+**If you follow this structure, you’ll be able to build a robust, scalable frontend that can browse, filter, and display all relevant backtest data.**  
+If you need a sample API response or more details on a specific field, just ask.

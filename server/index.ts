@@ -1,70 +1,67 @@
-import express, { type Request, Response, NextFunction } from "express";
-import { registerRoutes } from "./routes";
-import { setupVite, serveStatic, log } from "./vite";
+import express, { Request, Response, NextFunction } from 'express';
+import { registerRoutes } from './routes';
+import { setupVite, serveStatic, log } from './vite';
+import { storage } from './storage';
+import http from 'http';
 
-const app = express();
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
+async function start() {
+  const app = express();
+  const PORT = process.env.PORT || 5000;
 
-app.use((req, res, next) => {
-  const start = Date.now();
-  const path = req.path;
-  let capturedJsonResponse: Record<string, any> | undefined = undefined;
+  // Add basic middleware
+  app.use(express.json());
+  app.use(express.urlencoded({ extended: true }));
 
-  const originalResJson = res.json;
-  res.json = function (bodyJson, ...args) {
-    capturedJsonResponse = bodyJson;
-    return originalResJson.apply(res, [bodyJson, ...args]);
-  };
-
-  res.on("finish", () => {
-    const duration = Date.now() - start;
-    if (path.startsWith("/api")) {
-      let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
-      }
-
-      if (logLine.length > 80) {
-        logLine = logLine.slice(0, 79) + "…";
-      }
-
-      log(logLine);
+  // In development mode, skip static file serving as Vite handles it
+  try {
+    if (process.env.NODE_ENV !== 'development') {
+      serveStatic(app);
+    } else {
+      log('Development mode detected, skipping static file serving');
     }
-  });
-
-  next();
-});
-
-(async () => {
-  const server = await registerRoutes(app);
-
-  app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-    const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
-
-    res.status(status).json({ message });
-    throw err;
-  });
-
-  // importantly only setup vite in development and after
-  // setting up all the other routes so the catch-all route
-  // doesn't interfere with the other routes
-  if (app.get("env") === "development") {
-    await setupVite(app, server);
-  } else {
-    serveStatic(app);
+  } catch (error) {
+    console.warn('Static file serving disabled:', error);
   }
 
-  // ALWAYS serve the app on port 5000
-  // this serves both the API and the client.
-  // It is the only port that is not firewalled.
-  const port = 5000;
-  server.listen({
-    port,
-    host: "0.0.0.0",
-    reusePort: true,
-  }, () => {
-    log(`serving on port ${port}`);
+  // Create server before setting up routes and Vite
+  const server = http.createServer(app);
+  
+  // Register API routes
+  await registerRoutes(app);
+
+  // Setup Vite for development
+  if (process.env.NODE_ENV === 'development') {
+    try {
+      await setupVite(app, server);
+      log('Vite development server started');
+    } catch (error) {
+      console.error('Error setting up Vite:', error);
+    }
+  }
+
+  // Global error handler
+  app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+    console.error('Unhandled error:', err);
+    res.status(500).json({
+      error: 'Internal server error',
+      message: process.env.NODE_ENV === 'production' ? undefined : err.message
+    });
   });
-})();
+
+  // Log the Redis connection status
+  log(`Redis connection status: ${storage.isRedisConnected() ? 'Connected' : 'Disconnected'}`);
+
+  // Start the server on the configured port
+  if (server) {
+    server.listen(PORT, '0.0.0.0', () => {
+      log(`Server is running on port ${PORT}. Redis is ${storage.isRedisConnected() ? 'available' : 'unavailable - some features will be limited'}`);
+    });
+  } else {
+    log(`Server is running. Redis is ${storage.isRedisConnected() ? 'available' : 'unavailable - some features will be limited'}`);
+  }
+}
+
+start().catch(err => {
+  console.error('Failed to start server:', err);
+  process.exit(1);
+});

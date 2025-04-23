@@ -22,7 +22,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const [location] = useLocation();
   
   // Check if Redis is connected
-  const { data: redisStatus } = useQuery({
+  const { data: redisStatus } = useQuery<{ connected: boolean }>({
     queryKey: ['/api/status/redis'],
     refetchInterval: 30000, // Check every 30 seconds
   });

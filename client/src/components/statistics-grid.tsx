@@ -5,6 +5,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { Layers, Bot, AlertTriangle, PieChart, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { SessionSummary } from "@shared/schema";
 
 type StatCardProps = {
   title: string;
@@ -84,17 +85,17 @@ function StatCard({
 
 export default function StatisticsGrid() {
   // Fetch the statistics for the dashboard
-  const { data: sessions, isLoading: sessionsLoading } = useQuery({
+  const { data: sessions, isLoading: sessionsLoading } = useQuery<SessionSummary[]>({
     queryKey: ['/api/sessions'],
   });
   
   // Calculate dashboard metrics
-  const activeSessions = sessions?.filter(s => s.active).length || 0;
-  const totalBotRuns = sessions?.reduce((acc, s) => acc + s.runCount, 0) || 0;
-  const failedRuns = sessions?.reduce((acc, s) => acc + s.errorCount, 0) || 0;
+  const activeSessions = sessions ? sessions.filter(s => s.active).length : 0;
+  const totalBotRuns = sessions ? sessions.reduce((acc, s) => acc + s.runCount, 0) : 0;
+  const failedRuns = sessions ? sessions.reduce((acc, s) => acc + s.errorCount, 0) : 0;
   
   // Calculate success rate
-  const completedRuns = sessions?.reduce((acc, s) => acc + s.completedRuns, 0) || 0;
+  const completedRuns = sessions ? sessions.reduce((acc, s) => acc + s.completedRuns, 0) : 0;
   const successRate = totalBotRuns > 0 
     ? ((completedRuns / totalBotRuns) * 100).toFixed(1) 
     : "0.0";
